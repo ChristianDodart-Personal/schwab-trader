@@ -3,6 +3,20 @@
 Patch notes for each release. The newest version's section is pulled into the GitHub
 release automatically and shown inside the app when an update is ready to install.
 
+## v0.93.0 — "Merged buy fills"
+
+- **A single buy now shows as one position, not several.** When you place a market buy, it
+  often fills against several sellers at once, and Schwab reports each piece as its own
+  execution. The app used to list those pieces as separate positions at the same price, so
+  selling one could show only a fraction of the real profit, even though selling the whole
+  thing would lock in the full gain. Now the pieces of a single purchase combine into one
+  position at the average price, the way you'd expect. Selling it realizes the whole gain.
+- Pieces combine when they come from the same order, or when they're at the same price on
+  the same day. Buys at the same price on different days stay as separate rungs, and a sale
+  in between always keeps the buys before and after it distinct.
+- Existing split positions fix themselves the next time you sync from Schwab. Your data and
+  settings stay exactly as they are.
+
 ## v0.92.0 — "Order & account internals hardening"
 
 - **Mostly maintenance, with two small visible refinements.** Finished the internals cleanup

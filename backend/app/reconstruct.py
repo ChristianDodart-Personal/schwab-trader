@@ -31,6 +31,7 @@ class OpenLot:
     at: date | datetime
     rung: int = 0
     source: str = "fill"   # "fill" = from a real buy fill; "position" = backfilled from Schwab's aggregate
+    order_id: str = ""     # Schwab order id of the buy (used to merge one order's many execution legs)
 
 
 @dataclass
@@ -113,6 +114,42 @@ def _ordered_for_lifo(fills: list[Fill]) -> list[Fill]:
     return out
 
 
+def _can_merge(lot: OpenLot, f: Fill) -> bool:
+    """Should this BUY fill fold into the lot on top of the stack instead of opening
+    a new rung? A market (or large) order routinely fills across several
+    counterparties, so Schwab reports it as multiple consecutive BUY executions —
+    same order, ~same second, same or near price. Reconstructed one-lot-per-fill,
+    that shows as several tiny positions at one price and, worse, lets a sell realize
+    only a FRAGMENT of the rung's gain. Collapsing them restores one true rung.
+
+    Only ever merges into `stack[-1]` (the adjacent, most-recent lot), so an
+    intervening SELL — which pops lots — always breaks a merge chain and same-day
+    buy/sell/buy LIFO attribution is untouched. Merge when either:
+      - same Schwab order id (one order, many execution legs — the exact fragmentation), or
+      - same price on the SAME day (distinct orders that are plainly one rung; the
+        ladder never places two rungs at a single price, and same-price-same-day is
+        LIFO-identical anyway). Different days at one price stay separate rungs.
+    Never merges a synthetic position-backfill lot (source != "fill")."""
+    if lot.source != "fill":
+        return False
+    if lot.order_id and f.order_id and lot.order_id == f.order_id:
+        return True
+    return abs(lot.price - f.price) < _EPS and _day(lot.at) == _day(f.at)
+
+
+def _merge_into(lot: OpenLot, f: Fill) -> None:
+    """Fold a BUY fill into an existing lot: sum shares, share-weight the cost (so a
+    market order's slightly-varying leg prices collapse to the real average), and keep
+    the earliest timestamp. Adopts the fill's order id if the lot lacked one."""
+    total = lot.shares + f.shares
+    if total > _EPS:
+        lot.price = (lot.shares * lot.price + f.shares * f.price) / total
+    lot.shares = total
+    if isinstance(f.at, datetime) and isinstance(lot.at, datetime):
+        lot.at = min(lot.at, f.at)
+    lot.order_id = lot.order_id or f.order_id
+
+
 def reconstruct(fills: list[Fill]) -> dict:
     """Returns {open_lots: {symbol: [OpenLot...]}, closed: [ClosedTrade...],
     oversold: [(symbol, shares, sell_price, at)]}."""
@@ -147,7 +184,10 @@ def reconstruct(fills: list[Fill]) -> dict:
                     lot.price /= r
             continue
         if side == "BUY":
-            stack.append(OpenLot(f.symbol, f.shares, f.price, f.at))
+            if stack and _can_merge(stack[-1], f):
+                _merge_into(stack[-1], f)
+            else:
+                stack.append(OpenLot(f.symbol, f.shares, f.price, f.at, order_id=f.order_id))
         else:  # SELL retires the most recent lots first (LIFO)
             remaining = f.shares
             while remaining > _EPS and stack:

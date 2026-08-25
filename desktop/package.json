@@ -1,6 +1,6 @@
 {
   "name": "schwab-trader-desktop",
-  "version": "0.92.0",
+  "version": "0.93.0",
   "description": "Schwab Trader — packaged desktop app (Electron shell + PyInstaller backend sidecar).",
   "main": "main.js",
   "author": "Christian Dodart",
@@ -51,8 +51,18 @@
     },
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["arm64"] },
-        { "target": "zip", "arch": ["arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
       ],
       "category": "public.app-category.finance",
       "hardenedRuntime": true,

@@ -157,7 +157,8 @@ async def _write(account_hash: str, fills, positions=None) -> dict:
             for ol in lots:
                 s.add(Lot(account_hash=account_hash, symbol=ol.symbol, rung=ol.rung,
                           buy_date=_as_date(ol.at), shares=ol.shares, buy_price=ol.price,
-                          source=getattr(ol, "source", "fill")))
+                          source=getattr(ol, "source", "fill"),
+                          schwab_order_id=(getattr(ol, "order_id", "") or None)))
                 n_lots += 1
                 if getattr(ol, "source", "fill") == "position":
                     n_backfill += 1
