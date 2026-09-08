@@ -1,6 +1,6 @@
 {
   "name": "schwab-trader-desktop",
-  "version": "0.93.0",
+  "version": "0.94.0",
   "description": "Schwab Trader — packaged desktop app (Electron shell + PyInstaller backend sidecar).",
   "main": "main.js",
   "author": "Christian Dodart",
@@ -82,7 +82,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "ChristianDodart",
+        "owner": "ChristianDodart-Personal",
         "repo": "schwab-trader"
       }
     ]

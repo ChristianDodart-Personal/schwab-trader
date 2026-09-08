@@ -35,6 +35,20 @@ export interface GlossaryFigures {
   tradableFunds?: number | null;
   harvestable?: number | null;
   dayChange?: number | null;
+  // returns / ledger (fed by the Ledger's Historic tab)
+  peakCapital?: number | null;
+  capitalAtWork?: number | null;
+  depositedAllTime?: number | null;
+  withdrawnAllTime?: number | null;   // negative
+  principalReturned?: number | null;
+  profitWithdrawn?: number | null;
+  totalProfit?: number | null;
+  gainOnCapitalAtWork?: number | null;
+  roiPct?: number | null;
+  thisYear?: number | null;
+  realizedYtd?: number | null;
+  taxReserve?: number | null;
+  afterTaxRealized?: number | null;
 }
 
 export interface GlossaryEntry {
@@ -175,19 +189,121 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   },
 
   // ---- returns / ledger ----
-  net_deposits: {
-    term: "Net deposits",
-    oneLiner: "Your own money in, minus money out — the capital you actually contributed.",
-    howItWorks: "Transfers and wires in/out, plus cash journals. NOT trades or dividends. It's the base every return figure is measured against.",
-    source: "hybrid",
-    related: ["roi", "cash_identity"],
+  // Three different questions hide inside "how am I doing", and one number can't answer
+  // all of them: (1) what base is my money measured against (peak_capital), (2) how many
+  // dollars have I made (total_profit, split into gain_on_capital_at_work + profit_withdrawn),
+  // (3) what rate did it earn (roi). A separate axis answers "what is actually mine to take
+  // out": realized_ytd → tax_reserve → after_tax_realized. Each definition says what it
+  // measures AND why it exists, since the why is what makes the number readable.
+  peak_capital: {
+    term: "Peak capital",
+    oneLiner: "The most of your own money that was ever in the account at once. The base every return percentage is measured against.",
+    howItWorks: "Why not total deposits: if you put in $1,900, pulled it all back out, then put in $9,500, you only ever had $9,500 at risk at one time, not $11,400. Counting the recycled money would make your return look smaller than it was. Why not net deposits: a withdrawal that included profit would shrink the base below what you actually risked. Peak capital avoids both.",
+    howCalculated: "Walk every deposit and withdrawal in date order, tracking your principal. Deposits add to it. A withdrawal returns principal first; anything beyond that is profit taken out and is not subtracted. Peak capital is the highest that running principal ever reached.",
+    example: (f) => has(f.peakCapital, f.depositedAllTime)
+      ? `${usd(f.peakCapital)} at the high point (${usd(f.depositedAllTime)} deposited over time)` : null,
+    source: "computed",
+    related: ["capital_at_work", "total_profit", "roi", "profit_withdrawn", "net_deposits"],
+  },
+  capital_at_work: {
+    term: "Capital at work",
+    oneLiner: "Your own money currently in the account: everything deposited, minus the principal you have taken back out.",
+    howItWorks: "This is what your holdings and cash are built on right now. Profit you withdrew is not subtracted, because it was never your principal. Compare account value to this to see how the money currently in is doing.",
+    howCalculated: "Deposits − principal returned. A withdrawal counts here only up to the principal that was in the account at the time.",
+    example: (f) => has(f.depositedAllTime, f.principalReturned, f.capitalAtWork)
+      ? `${usd(f.depositedAllTime)} − ${usd(f.principalReturned)} = ${usd(f.capitalAtWork)}` : null,
+    source: "computed",
+    related: ["peak_capital", "gain_on_capital_at_work", "principal_returned"],
+  },
+  total_profit: {
+    term: "Total profit",
+    oneLiner: "Every dollar this account has made you, all time, whether it is still in the account or already withdrawn.",
+    howItWorks: "The 'am I making money' number. It needs no capital base and it counts profit you already cashed out, so taking gains out never makes it drop. It splits into the gain on capital at work (the current run) plus profit already withdrawn (banked).",
+    howCalculated: "Account value + everything withdrawn − everything deposited.",
+    example: (f) => has(f.accountValue, f.withdrawnAllTime, f.depositedAllTime, f.totalProfit)
+      ? `${usd(f.accountValue)} + ${usd(-f.withdrawnAllTime!)} − ${usd(f.depositedAllTime)} = ${signed(f.totalProfit!)}` : null,
+    source: "computed",
+    related: ["gain_on_capital_at_work", "profit_withdrawn", "roi", "realized_pl", "unrealized_pl"],
   },
   roi: {
-    term: "ROI",
-    oneLiner: "Return on the capital you put in.",
-    howCalculated: "Account value gain ÷ the capital you contributed (net deposits, on a peak-capital base).",
+    term: "Return on peak capital",
+    oneLiner: "Total profit as a percentage of the most money you ever had at risk. The 'how well did my money do' number.",
+    howItWorks: "Deposits and withdrawals are not performance: adding money is not a gain and taking it out is not a loss. Dividing by peak capital keeps your own transfers from inflating or deflating the figure. It is timing-blind, so a dollar in for a week counts the same as one in for a year; a time-weighted return would be the stricter scorecard of skill.",
+    howCalculated: "Total profit ÷ peak capital × 100.",
+    example: (f) => has(f.totalProfit, f.peakCapital, f.roiPct) && f.peakCapital
+      ? `${signed(f.totalProfit!)} ÷ ${usd(f.peakCapital)} × 100 = ${f.roiPct! > 0 ? "+" : ""}${f.roiPct}%` : null,
     source: "computed",
-    related: ["net_deposits"],
+    related: ["total_profit", "peak_capital", "net_deposits"],
+  },
+  gain_on_capital_at_work: {
+    term: "Gain on capital at work",
+    oneLiner: "How the money currently in the account is doing: what it is worth now versus the principal you have in.",
+    howItWorks: "The gain on your current run only. It leaves out profit you already withdrew, which has its own line, so the two together equal total profit.",
+    howCalculated: "Account value − capital at work.",
+    example: (f) => has(f.accountValue, f.capitalAtWork, f.gainOnCapitalAtWork)
+      ? `${usd(f.accountValue)} − ${usd(f.capitalAtWork)} = ${signed(f.gainOnCapitalAtWork!)}` : null,
+    source: "computed",
+    related: ["capital_at_work", "total_profit", "profit_withdrawn"],
+  },
+  profit_withdrawn: {
+    term: "Profit withdrawn",
+    oneLiner: "Gains you have already taken out of the account as cash.",
+    howItWorks: "When a withdrawal is larger than the principal you had in at that moment, the extra is profit, not your own money coming back. It is banked: it counts toward total profit and it never reduces peak capital or capital at work. It was realized, so it was taxable in the year those trades closed.",
+    howCalculated: "For each withdrawal, the amount beyond the principal in the account at the time, summed.",
+    example: (f) => has(f.withdrawnAllTime, f.principalReturned, f.profitWithdrawn) && f.withdrawnAllTime! < 0
+      ? `${usd(-f.withdrawnAllTime!)} withdrawn = ${usd(f.principalReturned)} principal back + ${usd(f.profitWithdrawn)} profit` : null,
+    source: "computed",
+    related: ["principal_returned", "total_profit", "peak_capital", "realized_pl"],
+  },
+  principal_returned: {
+    term: "Principal returned",
+    oneLiner: "The part of your withdrawals that was your own money coming back, not profit.",
+    howItWorks: "Taking your own deposit back out is not income and is not taxed. It lowers capital at work but leaves total profit untouched.",
+    howCalculated: "For each withdrawal, the amount up to the principal in the account at the time, summed.",
+    example: (f) => has(f.withdrawnAllTime, f.principalReturned, f.profitWithdrawn) && f.withdrawnAllTime! < 0
+      ? `${usd(-f.withdrawnAllTime!)} withdrawn = ${usd(f.principalReturned)} principal back + ${usd(f.profitWithdrawn)} profit` : null,
+    source: "computed",
+    related: ["profit_withdrawn", "capital_at_work", "net_deposits"],
+  },
+  net_deposits: {
+    term: "Net deposits",
+    oneLiner: "Money in minus money out, as a plain running total. Sound as a cash cross-check, misleading as a capital base.",
+    howItWorks: "A withdrawal that included profit subtracts that profit too, so net deposits can land below the principal you actually have in. For 'how much of my money is in' read capital at work; for a return base read peak capital.",
+    howCalculated: "Sum of all deposits − sum of all withdrawals. Transfers, wires and cash journals only, never trades or dividends.",
+    example: (f) => has(f.depositedAllTime, f.withdrawnAllTime)
+      ? `${usd(f.depositedAllTime)} − ${usd(-f.withdrawnAllTime!)} = ${usd(f.depositedAllTime! + f.withdrawnAllTime!)}` : null,
+    source: "hybrid",
+    related: ["peak_capital", "capital_at_work", "cash_identity"],
+  },
+  realized_ytd: {
+    term: "Realized this year",
+    oneLiner: "Profit locked in by selling during the current calendar year. The number tax is owed on.",
+    howItWorks: "Only closed trades count; positions you still hold are paper gains and are not taxed until sold. The ladder holds under a year, so this is short-term gain, taxed as ordinary income on top of your salary. It is fixed to the calendar year and does not move with the period selector.",
+    howCalculated: "Sum of profit on trades closed since January 1 of this year.",
+    example: (f) => has(f.realizedYtd, f.thisYear)
+      ? `${signed(f.realizedYtd!)} locked in so far in ${f.thisYear}` : null,
+    source: "computed",
+    related: ["realized_pl", "tax_reserve", "after_tax_realized", "unrealized_pl"],
+  },
+  tax_reserve: {
+    term: "Tax reserve",
+    oneLiner: "An estimate of the tax this year's realized gains will add to your bill: the amount to hold back.",
+    howItWorks: "Short-term gains stack on top of your other income, so the app computes the extra federal tax the gains cause at your real marginal bracket, plus a flat state rate. A planning estimate, not tax advice; the true figure depends on your full return. Salary and state rate are set under Settings → Taxes.",
+    howCalculated: "federal tax(salary + realized) − federal tax(salary), plus realized × state rate. A net loss reserves $0.",
+    example: (f) => has(f.realizedYtd, f.taxReserve)
+      ? `${usd(f.realizedYtd)} realized → hold back about ${usd(f.taxReserve)}` : null,
+    source: "computed",
+    related: ["realized_ytd", "after_tax_realized", "progressive_tax"],
+  },
+  after_tax_realized: {
+    term: "After tax, this year",
+    oneLiner: "This year's locked-in profit with the estimated tax set aside: the part that is actually yours to keep.",
+    howItWorks: "The practical 'what could I take out' figure. Withdrawing more than this means pulling out principal, or counting on paper gains that can still reverse. It does not subtract profit you already withdrew this year, so read that line alongside it.",
+    howCalculated: "Realized this year − tax reserve.",
+    example: (f) => has(f.realizedYtd, f.taxReserve, f.afterTaxRealized)
+      ? `${usd(f.realizedYtd)} − ${usd(f.taxReserve)} = ${signed(f.afterTaxRealized!)}` : null,
+    source: "computed",
+    related: ["realized_ytd", "tax_reserve", "profit_withdrawn", "unrealized_pl"],
   },
   cash_identity: {
     term: "Cash cross-check",

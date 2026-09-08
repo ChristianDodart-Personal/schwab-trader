@@ -7,7 +7,7 @@ import {
   AccountStamp, ALL_TIME, Card, Panel, PeriodSelector, Row, S, moneyColor, type Period,
 } from "./LedgerUI";
 import { IconUpload, IconDownload, IconRefresh, IconClose } from "./Icon";
-import { Term } from "./GlossaryUI";
+import { Term, useGlossaryFigures } from "./GlossaryUI";
 import type { CashFlowRow, LedgerHistoric as Historic, MarginSummary } from "./types";
 
 import { API } from "./api";
@@ -105,6 +105,29 @@ export function LedgerHistoric() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Feed this account's ledger figures to the glossary so every definition can show its
+  // formula worked out on real numbers. Merged with the dashboard's feed, not replacing it.
+  const setGlossFigures = useGlossaryFigures();
+  useEffect(() => {
+    if (!h) return;
+    setGlossFigures({
+      accountValue: h.now.account_value ?? null,
+      depositedAllTime: h.deposited_all_time,
+      withdrawnAllTime: h.withdrawn_all_time,
+      peakCapital: h.capital?.peak ?? h.peak_net_contributed ?? null,
+      capitalAtWork: h.capital?.at_work ?? null,
+      principalReturned: h.capital?.principal_returned ?? null,
+      profitWithdrawn: h.capital?.profit_withdrawn ?? null,
+      gainOnCapitalAtWork: h.capital?.gain_on_capital_at_work ?? null,
+      totalProfit: h.gain_vs_contributed,
+      roiPct: h.roi_pct,
+      thisYear: h.this_year?.year ?? null,
+      realizedYtd: h.this_year?.realized ?? null,
+      taxReserve: h.this_year?.tax_reserve ?? null,
+      afterTaxRealized: h.this_year?.after_tax_realized ?? null,
+    });
+  }, [h, setGlossFigures]);
+
   const refreshDeposits = () => {
     setBusy(true);
     fetch(`${API}/ledger/cashflows/refresh`, { method: "POST" })
@@ -176,6 +199,10 @@ export function LedgerHistoric() {
   const now = h.now;
   const r = h.realized;
   const scoped = !!(scope.from || scope.to);
+  // Capital split + this-year tax axis (absent only against a backend predating them).
+  const cap = h.capital;
+  const peak = cap?.peak ?? h.peak_net_contributed ?? h.deposited_all_time;
+  const ty = h.this_year;
 
   return (
     <div>
@@ -209,48 +236,83 @@ export function LedgerHistoric() {
         <p style={S.warn}>Live balances unavailable{now.note ? ` (${now.note})` : ""} — showing the last saved snapshot. Reconnect under Settings → Schwab connection.</p>
       )}
 
-      {/* ---- Since inception (all-time performance headline) ---- */}
+      {/* ---- Since inception: the three answers to "how am I doing", in reading order.
+           The base your money is measured against, the dollars it has made, the rate. ---- */}
       {h.contributions_recorded > 0 && h.gain_vs_contributed != null && (
         <>
           <div style={S.panelHead}>
             <h3 className="section-title" style={{ margin: "14px 0 0" }}>Since inception</h3>
+            <span style={S.periodShow}>hover a label for what it measures and why</span>
           </div>
           <div style={S.cards}>
-            <Card label="Peak capital" value={usd(h.peak_net_contributed ?? h.deposited_all_time)}
-              sub={h.deposited_all_time !== (h.peak_net_contributed ?? h.deposited_all_time) ? `${usd(h.deposited_all_time)} gross deposited` : undefined}
-              hint="The most of YOUR money that was ever in the account at once (running net of deposits and withdrawals, at its highest). This is the return base — cycling money out and back in doesn't inflate it." />
-            <Card label="Current value" value={usd(now.account_value)} term="account_value"
-              sub={h.withdrawn_all_time < 0 ? `+ ${usd(-h.withdrawn_all_time)} already withdrawn` : undefined} />
-            <Card label="Total gain" value={usd(h.gain_vs_contributed)} accent={moneyColor(h.gain_vs_contributed)} term="roi"
-              sub={h.roi_pct != null ? `${h.roi_pct > 0 ? "+" : ""}${h.roi_pct}% on peak capital` : undefined} />
+            <Card label="Peak capital" value={usd(peak)} term="peak_capital"
+              sub={cap && Math.abs(cap.at_work - peak) >= 0.005
+                ? `${usd(cap.at_work)} of it in the account now`
+                : `${usd(h.deposited_all_time)} deposited over time`} />
+            <Card label="Total profit" value={usd(h.gain_vs_contributed)} accent={moneyColor(h.gain_vs_contributed)} term="total_profit"
+              sub={cap && cap.profit_withdrawn > 0 ? `${usd(cap.profit_withdrawn)} of it already withdrawn` : "all time, in and out of the account"} />
+            <Card label="Return on peak capital" term="roi"
+              value={h.roi_pct == null ? "—" : `${h.roi_pct > 0 ? "+" : ""}${h.roi_pct}%`}
+              accent={h.roi_pct == null ? undefined : moneyColor(h.roi_pct)}
+              sub={`${usd(h.gain_vs_contributed)} ÷ ${usd(peak)}`} />
           </div>
         </>
+      )}
+
+      {/* ---- Profit breakdown: where the profit is, and what is actually yours after tax.
+           Stack 1 splits total profit into "how the money in now is doing" + "gains already
+           cashed out". Stack 2 is the tax axis on this year's LOCKED-IN gains only. ---- */}
+      {h.contributions_recorded > 0 && h.gain_vs_contributed != null && cap && (
+        <Panel title="Profit breakdown">
+          <Row k="Gain on capital at work" v={usd(cap.gain_on_capital_at_work)} term="gain_on_capital_at_work"
+            accent={moneyColor(cap.gain_on_capital_at_work ?? 0)}
+            sub={`how the ${usd(cap.at_work)} in the account now is doing`} />
+          <Row k="Profit already withdrawn" v={usd(cap.profit_withdrawn)} term="profit_withdrawn"
+            accent={cap.profit_withdrawn > 0 ? "var(--pos)" : undefined}
+            sub={cap.profit_withdrawn > 0 ? "gains you have cashed out; banked, still counts" : "none taken out yet"} />
+          <Row k="Total profit, all time" v={usd(h.gain_vs_contributed)} hi accent={moneyColor(h.gain_vs_contributed)} term="total_profit"
+            sub={h.roi_pct != null ? `the two above · ${h.roi_pct > 0 ? "+" : ""}${h.roi_pct}% on peak capital` : "the two above"} />
+          {ty && (
+            <>
+              <div style={S2.divider} />
+              <Row k="Unrealized (paper)" v={usd(now.unrealized_pl)} term="unrealized_pl"
+                accent={moneyColor(now.unrealized_pl ?? 0)}
+                sub="on positions still held · not taxed until sold, can still reverse" />
+              <Row k={`Realized in ${ty.year}`} v={usd(ty.realized)} term="realized_ytd"
+                accent={moneyColor(ty.realized)}
+                sub="locked in by selling this year · what tax is owed on" />
+              <Row k="Tax reserve" v={usd(ty.tax_reserve)} term="tax_reserve"
+                accent={ty.tax_reserve > 0 ? "var(--neg)" : undefined}
+                sub={ty.tax_reserve > 0
+                  ? `hold back · ${(ty.tax.effective_rate * 100).toFixed(1)}% effective, stacked on your salary · estimate`
+                  : "nothing to reserve"} />
+              <Row k={`After tax, ${ty.year}`} v={usd(ty.after_tax_realized)} hi term="after_tax_realized"
+                accent={moneyColor(ty.after_tax_realized)}
+                sub="this year's locked-in profit that is yours to keep" />
+            </>
+          )}
+          <p style={S.fine}>
+            Read top to bottom. The first three answer "how much have I made": total profit is the gain
+            on the money in now plus what you already took out, so withdrawing profit never makes it
+            fall. The rest are the tax axis: only <b>realized</b> gains are taxable, the reserve is the
+            estimated tax those add on top of your salary, and "after tax" is what is left of this
+            year's locked-in profit. Estimates, not tax advice.
+          </p>
+        </Panel>
       )}
 
       {/* ---- Capital & margin (deployment / leverage, live) ---- */}
       {margin && !margin.blocked && <MarginPanel m={margin} />}
 
-      {/* ---- Realized + contributions, scoped ---- */}
-      <Panel title="Realized & capital" right={<PeriodSelector value={scope} onChange={setScope} year={year} />}>
+      {/* ---- Realized trades, scoped by the period selector. The capital/base figures now
+           live in "Since inception" + "Profit breakdown" (all-time by nature). Mixing them
+           into this period panel was what made a profit withdrawal read as lost deposits. ---- */}
+      <Panel title="Realized trades" right={<PeriodSelector value={scope} onChange={setScope} year={year} />}>
         <Row k={`Realized capital gains${scoped ? "" : " (all time)"}`} v={usd(r.cap_gains)} hi term="realized_pl"
           accent={moneyColor(r.cap_gains)} sub={scope.label} />
         <Row k="Trades" v={String(r.trade_count)} sub={`${r.day_trade_count} day-trades`} />
-        <Row k="Gross proceeds" v={usd(r.gross_proceeds)} />
-        <Row k="Cost basis" v={usd(r.cost_basis)} term="cost_basis" />
-        <Row k="Deposited (all time)" v={usd(h.deposited_all_time)} term="net_deposits"
-          sub={`${h.contributions_recorded} entr${h.contributions_recorded === 1 ? "y" : "ies"} · the ROI base`} />
-        {h.withdrawn_all_time < 0 && (
-          <Row k="Withdrawn (all time)" v={usd(h.withdrawn_all_time)}
-            sub="returned capital — shown for reference, doesn't reduce the deposited base" />
-        )}
-        {h.gain_vs_contributed != null && (
-          <Row k="Total gain vs. deposited" v={usd(h.gain_vs_contributed)} hi accent={moneyColor(h.gain_vs_contributed)} term="roi"
-            sub={[
-              h.roi_pct != null ? `${h.roi_pct > 0 ? "+" : ""}${h.roi_pct}% on deposits` : null,
-              h.withdrawn_all_time < 0 ? `incl. ${usd(-h.withdrawn_all_time)} withdrawn added back` : null,
-              now.source !== "live" ? `based on last snapshot${now.as_of_snapshot ? " " + now.as_of_snapshot : ""}` : null,
-            ].filter(Boolean).join(" · ") || undefined} />
-        )}
+        <Row k="Gross proceeds" v={usd(r.gross_proceeds)} sub="what the sells brought in" />
+        <Row k="Cost basis" v={usd(r.cost_basis)} term="cost_basis" sub="what those shares had cost" />
       </Panel>
 
       {/* ---- Deposit log ---- */}
@@ -278,9 +340,17 @@ export function LedgerHistoric() {
         <div style={S2.cfSummary}>
           <span>Deposits <b style={{ color: "var(--pos)" }}>{usd(h.contributions.deposits)}</b></span>
           <span>Withdrawals <b style={{ color: h.contributions.withdrawals < 0 ? "var(--neg)" : "var(--text)" }}>{usd(h.contributions.withdrawals)}</b></span>
-          <span>Net <b>{usd(h.contributions.net)}</b></span>
+          <span><Term id="net_deposits">Net</Term> <b>{usd(h.contributions.net)}</b></span>
           <span style={{ color: "var(--text-faint)" }}>{scope.label}</span>
         </div>
+        {cap && cap.profit_withdrawn > 0 && (
+          <p style={{ ...S.fine, marginTop: -4 }}>
+            All time, the {usd(-h.withdrawn_all_time)} withdrawn was{" "}
+            <Term id="principal_returned">{usd(cap.principal_returned)} of your own money back</Term> plus{" "}
+            <Term id="profit_withdrawn">{usd(cap.profit_withdrawn)} of profit taken out</Term>. Only the first
+            part lowers your capital; the profit is banked.
+          </p>
+        )}
         {h.capital_by_year.length > 0 && (
           <div style={{ overflowX: "auto", marginBottom: 12 }}>
             <table className="tbl">
@@ -502,13 +572,20 @@ const RC: Record<string, React.CSSProperties> = {
 // Hidden on screen; the only thing that prints (see .print-only in ui.css). A clean
 // one-pager of the since-inception numbers + capital-by-year + dividends for records.
 function PrintSummary({ h, div }: { h: Historic; div: Dividends | null }) {
-  const now = h.now, r = h.realized;
+  const now = h.now, r = h.realized, cap = h.capital, ty = h.this_year;
+  const peak = cap?.peak ?? h.peak_net_contributed ?? h.deposited_all_time;
   const rowsFig: [string, string][] = [
     ["Account value", usd(now.account_value)],
+    ["Peak capital (return base)", usd(peak)],
     ["Deposited (all-time)", usd(h.deposited_all_time)],
     ...(h.withdrawn_all_time < 0 ? [["Withdrawn (all-time)", usd(h.withdrawn_all_time)] as [string, string]] : []),
-    ...(h.gain_vs_contributed != null ? [["Total gain", usd(h.gain_vs_contributed)] as [string, string]] : []),
-    ...(h.roi_pct != null ? [["Simple ROI", `${h.roi_pct}%`] as [string, string]] : []),
+    ...(cap && cap.profit_withdrawn > 0 ? [["  of which profit taken out", usd(cap.profit_withdrawn)] as [string, string]] : []),
+    ...(h.gain_vs_contributed != null ? [["Total profit (all-time)", usd(h.gain_vs_contributed)] as [string, string]] : []),
+    ...(h.roi_pct != null ? [["Return on peak capital", `${h.roi_pct}%`] as [string, string]] : []),
+    ...(ty ? [
+      [`Realized in ${ty.year}`, usd(ty.realized)] as [string, string],
+      [`Estimated tax reserve (${ty.year})`, usd(ty.tax_reserve)] as [string, string],
+    ] : []),
     ["Realized capital gains (all-time)", usd(r.cap_gains)],
     ["Dividends (all-time)", usd(div?.summary.total ?? 0)],
   ];
@@ -676,6 +753,7 @@ const S2: Record<string, React.CSSProperties> = {
   barVal: { width: 96, textAlign: "right", fontSize: "var(--fs-sm)", fontVariantNumeric: "tabular-nums" },
   barTrades: { width: 70, textAlign: "right", fontSize: "var(--fs-xs)", color: "var(--text-faint)" },
   cfSummary: { display: "flex", gap: 20, flexWrap: "wrap", fontSize: "var(--fs-md)", marginBottom: 10 },
+  divider: { borderTop: "1px solid var(--border)", margin: "8px 0" },
   tagSchwab: { color: "var(--accent-quiet)", border: "1px solid var(--border-strong)" },
   tagManual: { color: "var(--text-dim)", border: "1px solid var(--border)" },
 };

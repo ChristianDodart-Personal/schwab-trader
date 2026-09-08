@@ -38,7 +38,12 @@ export function GlossaryProvider({ children }: { children: React.ReactNode }) {
   const [stack, setStack] = useState<string[]>([]);
   const [anchor, setAnchor] = useState<Anchor | null>(null);
   const [sticky, setSticky] = useState(false);
-  const [figures, setFigures] = useState<GlossaryFigures | null>(null);
+  const [figures, setFiguresState] = useState<GlossaryFigures | null>(null);
+  // Feeds MERGE. The dashboard (App) and the Ledger each supply the figures they own, on
+  // their own cadence; a plain replace would let a ~1/s dashboard tick wipe the ledger's
+  // figures (or vice versa). Passing null clears everything.
+  const setFigures = useCallback((f: GlossaryFigures | null) =>
+    setFiguresState((prev) => (f === null ? null : { ...(prev ?? {}), ...f })), []);
   const openT = useRef<ReturnType<typeof setTimeout>>(undefined);
   const closeT = useRef<ReturnType<typeof setTimeout>>(undefined);
   const altRef = useRef(false);

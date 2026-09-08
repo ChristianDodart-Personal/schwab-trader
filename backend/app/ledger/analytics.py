@@ -559,6 +559,49 @@ async def build_projection(account_hash: str) -> dict:
 
 # ===================== HISTORIC (fact) =====================
 
+def capital_summary(flows) -> dict:
+    """Split dated outside-money flows [(day, amount)] into the figures that answer
+    "how much of MY money is, or was, in here" without a profit withdrawal distorting
+    them. Pure; the only ledger math a return percentage's denominator rests on.
+
+    Walks a running balance of the user's own PRINCIPAL in date order. A deposit adds
+    to it. A withdrawal first returns principal (reduces the balance); anything beyond
+    the principal present at that moment is not negative capital, it is profit being
+    cashed out, so the balance floors at zero and the excess is `profit_withdrawn`.
+
+    Without the floor, withdrawing more than you had deposited (taking gains out)
+    drives the running balance negative, and that deficit rides along into every
+    later deposit, understating peak capital by exactly the profit withdrawn. Real
+    case: $1,900 in, grew, $2,709.59 out (principal + $809.59 profit), then $9,500 in
+    sequentially read as an $8,690.41 peak instead of $9,500.
+
+    Returns
+      peak_capital        the most of your own money ever in at once (the return base)
+      capital_at_work     your principal in the account now (deposits still in)
+      profit_withdrawn    withdrawals beyond principal = gains cashed out (>= 0)
+      principal_returned  withdrawals that were your own money coming back (>= 0)
+    Identity: capital_at_work - profit_withdrawn == deposits - withdrawals (net).
+    """
+    running = peak = profit_out = principal_back = 0.0
+    for _day, amt in sorted(flows, key=lambda t: t[0]):
+        a = _f(amt)
+        if a >= 0:
+            running += a
+        else:
+            take = -a
+            back = min(take, running)        # the part that is your own money returning
+            principal_back += back
+            profit_out += take - back        # the part beyond principal = profit taken out
+            running -= back                  # floors at 0 by construction
+        peak = max(peak, running)
+    return {
+        "peak_capital": round(peak, 2),
+        "capital_at_work": round(running, 2),
+        "profit_withdrawn": round(profit_out, 2),
+        "principal_returned": round(principal_back, 2),
+    }
+
+
 async def build_historic(account_hash: str, from_date: date | None = None,
                          to_date: date | None = None) -> dict:
     """The FACT tab. `now` = live point-in-time balances from Schwab (or the last
@@ -622,6 +665,16 @@ async def build_historic(account_hash: str, from_date: date | None = None,
                 )
             )
         ).scalar() or 0
+        # Realized THIS calendar year, unscoped: the basis tax is actually owed on, so it
+        # must not move with the period selector.
+        realized_ytd = _f((
+            await s.execute(
+                select(func.coalesce(func.sum(CompletedTrade.profit), 0)).where(
+                    CompletedTrade.account_hash == account_hash,
+                    CompletedTrade.completed_at >= date(today.year, 1, 1),
+                )
+            )
+        ).scalar())
 
         # Contributions (scoped rows + scoped summary) and the all-time net.
         cf_conds = [CashFlow.account_hash == account_hash]
@@ -688,21 +741,33 @@ async def build_historic(account_hash: str, from_date: date | None = None,
         round(_f(acct_value) - net_all_time, 2)
         if acct_value is not None and int(all_time_count or 0) > 0 else None
     )
-    # ROI base = PEAK capital at risk: the maximum the cumulative net contribution ever
-    # reached. Gross deposits overstate the base when money cycles out and back in
-    # (withdraw 100k then redeposit 50k isn't 50k of NEW capital); net understates it
-    # after withdrawals. The peak is the most of YOUR money that was ever in the
-    # account at once — the honest denominator.
-    running = peak_net_contributed = 0.0
-    for _cd, _ca in sorted(cap_rows, key=lambda t: t[0]):
-        running += _f(_ca)
-        peak_net_contributed = max(peak_net_contributed, running)
-    peak_net_contributed = round(peak_net_contributed, 2)
-    roi_base = peak_net_contributed if peak_net_contributed > 0 else deposited_all_time
+    # Capital base = PEAK principal: the most of YOUR money ever in at once. Gross
+    # deposits overstate it when money cycles out and back in; net understates it after
+    # a withdrawal. capital_summary walks the flows with a floor at zero so a profit
+    # withdrawal is counted as profit taken out, never as negative capital (see its
+    # docstring for the $9,500-vs-$8,690.41 case this fixes).
+    cap = capital_summary(cap_rows)
+    peak_capital = cap["peak_capital"]
+    roi_base = peak_capital if peak_capital > 0 else deposited_all_time
     roi_pct = (
         round(gain_vs_contributed / roi_base * 100, 1)
         if gain_vs_contributed is not None and roi_base > 0 else None
     )
+    # Decomposition of total profit into "how the money currently in is doing" and
+    # "gains already cashed out". Always sums back to gain_vs_contributed because
+    # capital_at_work - profit_withdrawn == net contributed.
+    gain_on_capital_at_work = (
+        round(_f(acct_value) - cap["capital_at_work"], 2)
+        if gain_vs_contributed is not None else None
+    )
+    # Tax is owed on REALIZED gains for the calendar year, not on paper gains and not
+    # on lifetime totals. Reserve = incremental tax the year's realized gain adds on top
+    # of the user's other income (same stacked method the Predictive tab uses on the
+    # projected figure). Losses reserve $0.
+    cfg = await config_store.get_config(account_hash)
+    tax = _tax(realized_ytd, cfg["tax_state_rate"], cfg["tax_filing"],
+               cfg.get("other_annual_income") or 0.0)
+    after_tax_realized = round(realized_ytd - tax["total_tax"], 2)
 
     return {
         "as_of": today.isoformat(),
@@ -727,7 +792,23 @@ async def build_historic(account_hash: str, from_date: date | None = None,
         "net_contributed_all_time": round(net_all_time, 2),
         "deposited_all_time": deposited_all_time,
         "withdrawn_all_time": withdrawn_all_time,
-        "peak_net_contributed": peak_net_contributed,   # max of YOUR money ever in at once (ROI base)
+        "peak_net_contributed": peak_capital,   # kept for older clients; same as capital.peak
+        # Your own money, split so a profit withdrawal can never read as lost capital.
+        "capital": {
+            "peak": peak_capital,                          # the return base
+            "at_work": cap["capital_at_work"],             # principal in the account now
+            "profit_withdrawn": cap["profit_withdrawn"],   # gains already cashed out
+            "principal_returned": cap["principal_returned"],
+            "gain_on_capital_at_work": gain_on_capital_at_work,
+        },
+        # The tax axis: what is locked in this year, what to hold back for it, what's left.
+        "this_year": {
+            "year": today.year,
+            "realized": round(realized_ytd, 2),
+            "tax_reserve": tax["total_tax"],
+            "after_tax_realized": after_tax_realized,
+            "tax": tax,   # federal / state / effective rate / method, for the definition box
+        },
         "capital_by_year": capital_by_year,
         "contributions_recorded": int(all_time_count or 0),
         "gain_vs_contributed": gain_vs_contributed,

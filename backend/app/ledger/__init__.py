@@ -42,6 +42,7 @@ from .analytics import (
     build_summary,
     build_tax,
     build_trades,
+    capital_summary,
     compute_drawdown,
     compute_streaks,
 )

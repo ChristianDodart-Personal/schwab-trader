@@ -105,11 +105,27 @@ export type LedgerHistoric = {
   net_contributed_all_time: number;
   deposited_all_time: number;    // gross deposits (info)
   withdrawn_all_time: number;    // gross withdrawals (negative), shown for info only
-  peak_net_contributed?: number; // max of YOUR money ever in at once — the ROI base
+  peak_net_contributed?: number; // legacy alias of capital.peak
+  // Your own money, split so a profit withdrawal never reads as lost capital.
+  capital?: {
+    peak: number;                          // most of your principal ever in at once: the return base
+    at_work: number;                       // principal in the account now
+    profit_withdrawn: number;              // gains already cashed out (>= 0)
+    principal_returned: number;            // withdrawals that were your own money back (>= 0)
+    gain_on_capital_at_work: number | null; // account value − at_work
+  };
+  // The tax axis: locked in this calendar year, what to hold back, what's left.
+  this_year?: {
+    year: number;
+    realized: number;
+    tax_reserve: number;
+    after_tax_realized: number;
+    tax: { federal_tax: number; state_tax: number; state_rate: number; effective_rate: number; filing: string; method: string };
+  };
   capital_by_year: { year: number; deposits: number; withdrawals: number; net: number }[];
   contributions_recorded: number;
-  gain_vs_contributed: number | null;
-  roi_pct: number | null;        // gain_vs_contributed / deposited_all_time (simple, timing-blind)
+  gain_vs_contributed: number | null;   // total profit, all time: value + withdrawn − deposited
+  roi_pct: number | null;        // gain_vs_contributed / capital.peak × 100 (timing-blind)
   series: { day: string; balance: number; capital_gains: number }[];
 };
 export type Trade = {

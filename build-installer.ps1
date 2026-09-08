@@ -11,11 +11,11 @@
 # a stale artifact can never ship silently (the root cause of the first-run bug).
 #
 # -Publish AUTO-UPDATE PIPELINE (set up as of v0.5.0):
-#   Feed repo: ChristianDodart/schwab-trader (public), wired in desktop/package.json
+#   Feed repo: ChristianDodart-Personal/schwab-trader (public), wired in desktop/package.json
 #   build.publish. -Publish uploads the installer + latest.yml manifest to a GitHub
 #   Release; installed copies then self-update via electron-updater on next launch.
 #   Auth: uses $env:GH_TOKEN if set, else falls back to `gh auth token` (whichever
-#   gh account is ACTIVE — make sure it's ChristianDodart, `gh auth switch` if not).
+#   gh account is ACTIVE — make sure it's ChristianDodart-Personal, `gh auth switch` if not).
 #   The token needs 'repo' scope.
 # ============================================================================
 param(
@@ -112,7 +112,7 @@ if ($Publish) {
     $notesFile = [System.IO.Path]::GetTempFileName()
     Set-Content -Path $notesFile -Value $fullNotes -Encoding utf8
     Write-Host "    setting release notes + publishing $tag" -ForegroundColor Yellow
-    gh release edit $tag --repo ChristianDodart/schwab-trader --notes-file $notesFile --draft=false
+    gh release edit $tag --repo ChristianDodart-Personal/schwab-trader --notes-file $notesFile --draft=false
     if ($LASTEXITCODE -ne 0) { Write-Host "    WARN: couldn't set notes/publish automatically — do it manually with 'gh release edit $tag'" -ForegroundColor Red }
     Remove-Item $notesFile -ErrorAction SilentlyContinue
 }

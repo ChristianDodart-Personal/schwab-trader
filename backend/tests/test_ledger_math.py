@@ -6,7 +6,48 @@ from datetime import date
 import pytest
 
 from app.avg52 import _median
-from app.ledger import _period_key, _progressive_federal, _tax, _weekdays
+from app.ledger import _period_key, _progressive_federal, _tax, _weekdays, capital_summary
+
+
+# ---------- capital_summary: the return base must not shrink when profit is withdrawn ----------
+
+def test_capital_summary_profit_withdrawal_does_not_shrink_peak():
+    # The real sequence that exposed the bug: $1,900 in, grew, ALL $2,709.59 withdrawn
+    # (= $1,900 principal back + $809.59 profit), then $9,500 deposited over the summer.
+    # Peak capital must read $9,500. The old unfloored running total went to -809.59 on
+    # the withdrawal and carried that deficit forward, reporting an $8,690.41 peak.
+    flows = [
+        (date(2025, 10, 7), 200), (date(2025, 10, 27), 1700),
+        (date(2026, 1, 13), -2709.59),
+        (date(2026, 7, 1), 1000), (date(2026, 7, 1), 1000), (date(2026, 7, 6), 1500),
+        (date(2026, 7, 8), 1000), (date(2026, 7, 9), 1000), (date(2026, 7, 13), 1000),
+        (date(2026, 8, 10), 3000),
+    ]
+    c = capital_summary(flows)
+    assert c["peak_capital"] == 9500.0
+    assert c["capital_at_work"] == 9500.0
+    assert c["profit_withdrawn"] == pytest.approx(809.59)
+    assert c["principal_returned"] == 1900.0
+    # The identity the total-profit decomposition relies on:
+    # capital_at_work - profit_withdrawn == deposits - withdrawals (net contributed).
+    assert c["capital_at_work"] - c["profit_withdrawn"] == pytest.approx(11400 - 2709.59)
+
+
+def test_capital_summary_partial_withdrawal_is_principal_back_only():
+    # Taking out LESS than you put in is just your own money returning: no profit taken,
+    # capital at work drops, peak stays where it was.
+    c = capital_summary([(date(2026, 1, 1), 1000), (date(2026, 2, 1), -400)])
+    assert c == {"peak_capital": 1000.0, "capital_at_work": 600.0,
+                 "profit_withdrawn": 0.0, "principal_returned": 400.0}
+
+
+def test_capital_summary_sorts_by_date_and_handles_empty():
+    assert capital_summary([]) == {"peak_capital": 0.0, "capital_at_work": 0.0,
+                                   "profit_withdrawn": 0.0, "principal_returned": 0.0}
+    # Rows arrive in DB order, not date order; the walk must sort or a withdrawal listed
+    # first would wrongly read as all-profit.
+    c = capital_summary([(date(2026, 2, 1), -500), (date(2026, 1, 1), 1000)])
+    assert c["capital_at_work"] == 500.0 and c["profit_withdrawn"] == 0.0
 
 
 # ---------- progressive federal brackets (2025, single) ----------

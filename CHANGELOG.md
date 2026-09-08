@@ -3,6 +3,25 @@
 Patch notes for each release. The newest version's section is pulled into the GitHub
 release automatically and shown inside the app when an update is ready to install.
 
+## v0.94.0 — "Profit, capital and tax, explained"
+
+- **Withdrawing profit no longer shrinks your capital.** If you took out more than you had
+  put in (your deposit plus the gains it made), the app used to treat the extra as negative
+  capital and carry it into every later deposit. Your peak capital read lower than the money
+  you actually had at risk. Now a withdrawal returns your own money first and anything beyond
+  that counts as profit taken out, which is banked, not lost.
+- **The Ledger's Historic tab now reads in order.** Since inception shows the three answers
+  to "how am I doing": peak capital (the base your money is measured against), total profit
+  (every dollar made, in the account or already withdrawn), and return on peak capital. A new
+  Profit breakdown panel splits total profit into the gain on the money in the account now
+  plus profit you already took out, then walks the tax side: paper gains, realized gains this
+  year, an estimated tax reserve stacked on your salary, and what is left after tax.
+- **Every number explains itself.** Hover any label for what it measures, why that figure
+  and not the obvious alternative, how it is calculated, and the formula worked out on your
+  own account. Hold Alt to light up every defined term on screen.
+- The deposits panel now says, in words, how much of your withdrawals was your own money
+  back and how much was profit. The tax figures are planning estimates, not tax advice.
+
 ## v0.93.0 — "Merged buy fills"
 
 - **A single buy now shows as one position, not several.** When you place a market buy, it
