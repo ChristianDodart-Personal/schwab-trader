@@ -3,6 +3,19 @@
 Patch notes for each release. The newest version's section is pulled into the GitHub
 release automatically and shown inside the app when an update is ready to install.
 
+## v0.96.0 — "A holding is its ticker, not its CUSIP"
+
+- **Fixed: a position could split into a phantom.** Schwab's positions feed sometimes lists
+  a holding under its CUSIP (a nine-character security ID) instead of its ticker. The app
+  keyed everything by ticker, so it read that as "the real ticker is gone, an unknown symbol
+  appeared" and rebuilt the position as a priceless "prior holdings" row under the ID, with
+  the real ticker emptied out. It now recognizes a CUSIP, looks up the ticker it belongs to,
+  and files the shares where they belong.
+- **Safer by default.** If a holding ever can't be identified, the app skips that sync's
+  position check instead of guessing, so your ladder is never rewritten around an unknown
+  symbol. Any leftover phantom row is cleaned up on the next sync.
+- To repair an account that was affected, run Sync from Schwab once after updating.
+
 ## v0.95.0 — "Earnings over time"
 
 - **The capital-gains list now reads newest first.** The latest month or week is at the top,

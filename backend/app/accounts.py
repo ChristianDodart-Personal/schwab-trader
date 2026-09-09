@@ -19,6 +19,7 @@ from .schwab.auth import get_client
 
 import logging
 from .util import _f
+from .symbols import resolve_symbol
 
 log = logging.getLogger("schwab.accounts")
 # Strong refs to fire-and-forget background tasks so the loop can't GC them mid-run;
@@ -171,7 +172,9 @@ async def held_shares(account_hash: str, symbol: str) -> float | None:
             return None
         sa = r.json().get("securitiesAccount", {})
         for p in sa.get("positions", []) or []:
-            if (p.get("instrument", {}) or {}).get("symbol") == symbol:
+            # Resolve CUSIP-reported holdings so a sell of RCAX isn't refused (held=0)
+            # just because Schwab listed the shares under 88636W718 that day.
+            if resolve_symbol(client, p.get("instrument", {}) or {}) == symbol:
                 return float(p.get("longQuantity") or 0)
         return 0.0
 
@@ -452,7 +455,8 @@ async def selected_account_positions() -> dict:
     bal = sa.get("currentBalances", {}) or {}
     positions = [
         {
-            "symbol": p.get("instrument", {}).get("symbol"),
+            # Ticker when resolvable; the raw identifier otherwise so the row is still shown.
+            "symbol": resolve_symbol(client, p.get("instrument", {}) or {}) or (p.get("instrument", {}) or {}).get("symbol"),
             "shares": p.get("longQuantity"),
             "avg_price": p.get("averagePrice"),
             "market_value": p.get("marketValue"),

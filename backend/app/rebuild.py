@@ -172,10 +172,42 @@ async def _write(account_hash: str, fills, positions=None) -> dict:
             ))
         await s.commit()
 
+    try:
+        await _prune_phantom_cusip_tickers()
+    except Exception as e:
+        log.warning(f"phantom-ticker prune failed (non-fatal): {e!r}")
+
     log.info(f"{account_hash[-4:]}: {n_lots} open lots ({n_backfill} backfilled from "
              f"positions), {len(closed)} closed trades from {len(fills)} fills")
     return {"ok": True, "open_lots": n_lots, "backfilled": n_backfill,
             "closed": len(closed), "fills": len(fills)}
+
+
+async def _prune_phantom_cusip_tickers() -> int:
+    """Remove CUSIP-shaped `ticker` rows that nothing references. A positions snapshot
+    that reported a holding under its CUSIP (RCAX as 88636W718, 2026-09-08) inserted
+    one as FK reference data; once the ladder is rebuilt under the real ticker it
+    lingers as a bogus dashboard/movers/concentration entry. Real tickers are never
+    CUSIP-shaped, so this cannot touch a genuine symbol; watched rows and anything a
+    lot or completed trade still points at are left alone."""
+    from .symbols import is_cusip_like
+    n = 0
+    async with SessionLocal() as s:
+        rows = (await s.execute(select(Ticker.symbol).where(Ticker.watch.is_(False)))).all()
+        for (sym,) in rows:
+            if not is_cusip_like(sym):
+                continue
+            used = (await s.execute(
+                select(func.count()).select_from(Lot).where(Lot.symbol == sym))).scalar() or 0
+            used += (await s.execute(
+                select(func.count()).select_from(CompletedTrade).where(CompletedTrade.symbol == sym))).scalar() or 0
+            if not used:
+                await s.execute(delete(Ticker).where(Ticker.symbol == sym))
+                n += 1
+        if n:
+            await s.commit()
+            log.info(f"pruned {n} phantom CUSIP ticker row(s)")
+    return n
 
 
 async def rebuild_account(account_hash: str, fills: list[Fill]) -> dict:

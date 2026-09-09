@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 
 from .fills import _SKIP_ASSET_TYPES
+from .symbols import resolve_symbol
 from .util import _f
 
 log = logging.getLogger(__name__)
@@ -35,7 +36,6 @@ def _fetch_positions_sync(client, account_hash):
         instr = p.get("instrument", {}) or {}
         if instr.get("assetType") in _SKIP_ASSET_TYPES:  # skip options/futures/forex
             continue
-        sym = instr.get("symbol")
         # NET quantity: long minus short. A SHORT position comes through NEGATIVE —
         # explicit information, not omission: the reconcile drops long lots for a
         # symbol Schwab says isn't held long (actual <= 0 → drop), and the health
@@ -43,6 +43,22 @@ def _fetch_positions_sync(client, account_hash):
         # ladder itself stays long-only.
         qty = _f(p.get("longQuantity")) - _f(p.get("shortQuantity"))
         avg = _f(p.get("averagePrice"))
-        if sym and abs(qty) > 1e-9:
-            out.append((sym, qty, avg))
+        if abs(qty) <= 1e-9:
+            continue
+        # Ticker, not whatever string Schwab put in `symbol`. During a fund reorg or a
+        # data hiccup Schwab reports a holding under its CUSIP (RCAX arrived as
+        # 88636W718, 2026-09-08); the resolver maps that back via the Instruments API.
+        sym = resolve_symbol(client, instr)
+        if not sym:
+            # An unidentified holding means this snapshot is NOT a trustworthy "you hold
+            # exactly these symbols". Reconciling against it would drop the real ticker's
+            # lots as sold out AND backfill a phantom "prior" lot under the CUSIP. Fail
+            # closed like every other untrustworthy read: report unavailable so rebuild
+            # skips reconcile this pass and the fill-built ladder stands. The health
+            # report still surfaces the share-count gap so it isn't invisible.
+            raw = instr.get("symbol") or instr.get("cusip")
+            log.warning(f"{account_hash[-4:]}: holding {raw!r} ({qty:g} sh) could not be "
+                        f"identified as a ticker — positions snapshot treated as unavailable")
+            return None
+        out.append((sym, qty, avg))
     return out
