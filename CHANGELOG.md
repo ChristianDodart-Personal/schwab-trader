@@ -3,6 +3,24 @@
 Patch notes for each release. The newest version's section is pulled into the GitHub
 release automatically and shown inside the app when an update is ready to install.
 
+## v0.97.0 — "Splits are not sales"
+
+- **Fixed: a stock split could look like a huge gain.** The live sync only reads trades,
+  so a split that happened between CSV imports never reached the ledger. Your lots kept the
+  pre-split share count and price while Schwab held the new count, and the app read the
+  difference as shares you had sold, leaving the rest "bought" at the old per-share price.
+  On a 1:5 reverse split that showed as a +345% position and a large harvestable gain that
+  did not exist.
+- **The app now recognizes a split from your holdings.** When Schwab's share count is your
+  ledger's count divided or multiplied by a whole number, and Schwab's average cost moved by
+  that same factor, the app records a split, rescales the lots, and keeps your cost basis
+  exactly where it was. No profit or loss is booked. Selling part of a position never
+  triggers this, because your average cost does not move when you sell.
+- The split is written into the fill history, so a later sale of the post-split shares is
+  measured against the right cost. If you later import a Schwab CSV that records the split,
+  that record takes over and nothing is applied twice. You get a notification when it fires.
+- To repair an affected account, run Sync from Schwab once after updating.
+
 ## v0.96.0 — "A holding is its ticker, not its CUSIP"
 
 - **Fixed: a position could split into a phantom.** Schwab's positions feed sometimes lists

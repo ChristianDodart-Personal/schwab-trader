@@ -31,7 +31,7 @@ from sqlalchemy import delete, func, select
 
 from .db import SessionLocal, dialect_insert as pg_insert
 from .db.models import CompletedTrade, Lot, Ticker
-from .reconstruct import Fill, reconcile_open_lots, reconstruct
+from .reconstruct import Fill, infer_splits, reconcile_open_lots, reconstruct, split_stamp
 
 log = logging.getLogger(__name__)
 
@@ -121,6 +121,39 @@ async def _write(account_hash: str, fills, positions=None) -> dict:
                         f"fill-derived history (transient/misconfigured read); left data intact")
             return {"ok": False, "refused": "empty fills on an account with fill-derived history "
                     "— left existing data intact"}
+        # A split the fill stream never saw (the API path ingests TRADEs only) shows up
+        # here as Schwab holding the fill-built total ÷ k with a ×k average cost. Left
+        # alone, reconcile would trim lots at the OLD per-share cost and invent a gain
+        # (RCAX 1:5, 2026-09-09). Infer it, persist it as a SPLT in the ledger so LIFO
+        # sees it for every future sell, and re-project before reconciling.
+        splits = infer_splits(open_by_symbol, positions, split_stamp(fills, date.today()))
+        if splits:
+            from . import fill_store
+            for sp in splits:
+                held = sum(l.shares for l in open_by_symbol.get(sp.symbol, []))
+                log.warning(f"{account_hash[-4:]}: inferred split for {sp.symbol}: "
+                            f"{held:g} sh in fills vs {sp.shares:g} sh at Schwab — rescaling lots, "
+                            f"cost basis preserved (persisted as an inferred SPLT)")
+            try:
+                await fill_store.upsert_inferred_splits(account_hash, splits)
+            except Exception as e:
+                log.warning(f"{account_hash[-4:]}: could not persist inferred split(s): {e!r}")
+            fills = list(fills) + splits
+            result = reconstruct(fills)
+            open_by_symbol, closed, oversold = result["open_lots"], result["closed"], result["oversold"]
+            try:
+                from . import notifications as notifications_svc
+                for sp in splits:
+                    r = sp.shares / sp.price if sp.price else 0.0
+                    label = f"1:{round(1 / r):d} reverse split" if 0 < r < 1 else f"{round(r):d}:1 split"
+                    await notifications_svc.post_system_notification(
+                        sp.symbol,
+                        f"{sp.symbol} {label} detected: {sp.price:g} → {sp.shares:g} shares. Lots "
+                        f"rescaled, cost basis preserved. If a Schwab CSV later records the split, "
+                        f"the import supersedes this.",
+                        category="system", account_hash=account_hash)
+            except Exception as e:
+                log.warning(f"{account_hash[-4:]}: split notification failed: {e!r}")
         # Positions are the authoritative CURRENT holdings — reconcile to them
         # (backfills shares whose buys are outside the fill window). oversold becomes
         # informational: the position totals are the truth we align to.

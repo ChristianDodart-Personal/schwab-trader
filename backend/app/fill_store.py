@@ -539,7 +539,13 @@ async def import_csv_fills(account_hash: str, csv_text: str) -> dict:
                             and cov_from <= row.trade_date <= cov_to):
                         await s.delete(row)
                         removed_stale += 1
+        # A real split row from Schwab supersedes any split we INFERRED from the
+        # positions snapshot for the same symbol around the same time. Both describe
+        # one event; keeping both would rescale the lots twice.
+        superseded = await _supersede_inferred_splits(s, account_hash)
         await s.commit()
+    if superseded:
+        log.info(f"import {account_hash[-4:]}: {superseded} inferred split(s) superseded by CSV rows")
     if updated_times or removed_stale:
         log.info(f"import {account_hash[-4:]}: repaired ordering on {updated_times} stored fills, "
                  f"removed {removed_stale} stale rows")
@@ -552,6 +558,61 @@ async def import_csv_fills(account_hash: str, csv_text: str) -> dict:
             "covers_netted": parsed.get("covers_netted", 0),
             "coverage": {"from": cov["from"].isoformat() if cov["from"] else None,
                          "to": cov["to"].isoformat() if cov["to"] else None}}
+
+
+_SPLIT_MATCH_DAYS = 14   # an inferred split and the real record of it land within this window
+
+
+async def _supersede_inferred_splits(s, account_hash: str) -> int:
+    """Within an open session: delete source='inferred' SPLT rows whose symbol has a
+    non-inferred SPLT within ±_SPLIT_MATCH_DAYS. Returns how many were removed."""
+    rows = (await s.execute(
+        select(FillRecord).where(FillRecord.account_hash == account_hash, FillRecord.side == "SPLT")
+    )).scalars().all()
+    real = [r for r in rows if r.source != "inferred"]
+    n = 0
+    for inf in [r for r in rows if r.source == "inferred"]:
+        if any(r.symbol == inf.symbol and abs((r.trade_date - inf.trade_date).days) <= _SPLIT_MATCH_DAYS
+               for r in real):
+            await s.delete(inf)
+            n += 1
+    return n
+
+
+async def upsert_inferred_splits(account_hash: str, splits: list[Fill]) -> int:
+    """Persist splits inferred from the positions snapshot (reconstruct.infer_splits) as
+    PAIRED SPLT rows, source='inferred', so the LIFO projection keeps seeing them for
+    every later sell. Idempotent: skipped if the exact key exists, or if ANY SPLT for the
+    symbol already sits within ±_SPLIT_MATCH_DAYS (a CSV import may have recorded the
+    real event first). Returns the number inserted."""
+    if not splits:
+        return 0
+    added = 0
+    async with SessionLocal() as s:
+        existing = (await s.execute(
+            select(FillRecord.symbol, FillRecord.trade_date, FillRecord.fill_key)
+            .where(FillRecord.account_hash == account_hash, FillRecord.side == "SPLT")
+        )).all()
+        keys = {k for _, _, k in existing}
+        for sp in splits:
+            td = sp.at.date() if isinstance(sp.at, datetime) else sp.at
+            key = f"inferred|{account_hash[:24]}|{sp.symbol}|{td.isoformat()}|{sp.shares}|{sp.price}"[:180]
+            if key in keys:
+                continue
+            if any(sym == sp.symbol and abs((d - td).days) <= _SPLIT_MATCH_DAYS for sym, d, _ in existing):
+                log.info(f"{account_hash[-4:]}: a SPLT for {sp.symbol} already exists near {td}; not persisting the inferred one")
+                continue
+            s.add(FillRecord(
+                account_hash=account_hash, symbol=sp.symbol.upper(), side="SPLT",
+                shares=round(float(sp.shares), 4), price=round(float(sp.price), 4),
+                at=datetime(td.year, td.month, td.day), trade_date=td,
+                order_type="INFERRED", order_id=None, source="inferred", fill_key=key,
+            ))
+            keys.add(key)
+            added += 1
+        if added:
+            await s.commit()
+    return added
 
 
 async def heal_ledger(account_hash: str) -> dict:

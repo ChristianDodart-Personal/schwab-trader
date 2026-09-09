@@ -212,6 +212,77 @@ def reconstruct(fills: list[Fill]) -> dict:
     return {"open_lots": open_lots, "closed": closed, "oversold": oversold}
 
 
+def _close(a: float, b: float, tol: float) -> bool:
+    return abs(a - b) <= tol * max(abs(b), 1e-9)
+
+
+def split_factor(recon_shares: float, actual_shares: float,
+                 our_avg: float, schwab_avg: float) -> tuple[int, str] | None:
+    """Decide whether Schwab's CURRENT holding is the fill-built holding after a stock
+    split. Returns (k, "reverse"|"forward") or None.
+
+    Two independent signals must agree, which is what separates a split from a sale:
+      - SHARES: actual ≈ recon / k (reverse) or recon × k (forward), within one share
+        (a reverse split drops the fractional remainder as cash-in-lieu).
+      - COST:   Schwab restates the position's average price by the same factor
+        (× k reverse, ÷ k forward), so schwab_avg ≈ our_avg × k (or ÷ k) within 5%.
+    Selling 80% of a position also gives a 5:1 share ratio, but leaves Schwab's
+    average price unchanged, so it never passes the cost check. k is searched 2..100."""
+    if recon_shares <= _EPS or actual_shares <= _EPS or our_avg <= _EPS or schwab_avg <= _EPS:
+        return None
+    for k in range(2, 101):
+        if abs(actual_shares - recon_shares / k) < 1.0 and _close(schwab_avg, our_avg * k, 0.05):
+            return k, "reverse"
+        if abs(actual_shares - recon_shares * k) < 1.0 and _close(schwab_avg, our_avg / k, 0.05):
+            return k, "forward"
+    return None
+
+
+def infer_splits(open_by_symbol: dict[str, list[OpenLot]],
+                 positions: dict[str, tuple[float, float]], at) -> list[Fill]:
+    """Detect splits the fill stream never recorded, from the positions snapshot.
+
+    The live API path only ingests TRADE transactions, so a split that happens between
+    CSV imports is invisible to the ledger: the fill-built lots keep pre-split shares
+    and prices while Schwab holds the post-split count. Reconcile would then read the
+    shortfall as a missed SELL and trim lots at the OLD per-share cost (RCAX 1:5
+    reverse split, 2026-09-09: 729 sh @ $3.39 became 145 sh, shown as +345% and a
+    $1,709 "harvestable" gain that did not exist).
+
+    For every symbol that is purely fill-built AND present in `positions`, apply
+    `split_factor`. A match yields a PAIRED `SPLT` fill (shares = new total, price =
+    old total), the same encoding the CSV importer emits, stamped `at`; reconstruct
+    rescales the lots (shares × r, price ÷ r) with cost basis preserved and no P/L.
+    Position-backfilled symbols are skipped: their lots already carry Schwab's
+    post-split figures."""
+    out: list[Fill] = []
+    for sym, lots in open_by_symbol.items():
+        if sym not in positions or not lots or any(l.source != "fill" for l in lots):
+            continue
+        recon = sum(l.shares for l in lots)
+        cost = sum(l.shares * l.price for l in lots)
+        actual, schwab_avg = positions[sym]
+        if recon <= _EPS or actual is None or actual <= _EPS:
+            continue
+        hit = split_factor(recon, actual, cost / recon, float(schwab_avg or 0.0))
+        if hit is None:
+            continue
+        out.append(Fill(sym, "SPLT", shares=round(actual, 4), price=round(recon, 4), at=at,
+                        order_type="INFERRED", order_id=""))
+    return out
+
+
+def split_stamp(fills: list[Fill], today: date):
+    """A timestamp for an inferred SPLT that sorts correctly against the existing
+    fills: midnight of `today`, matching their type (tz-aware / naive datetime, or a
+    plain date when the stream is date-only). Mixing date and datetime would make the
+    chronological sort raise. SPLT already sorts ahead of same-day BUY/SELL."""
+    sample = next((f.at for f in fills if isinstance(f.at, datetime)), None)
+    if sample is None:
+        return today
+    return datetime(today.year, today.month, today.day, tzinfo=sample.tzinfo)
+
+
 def reconcile_open_lots(open_by_symbol: dict[str, list[OpenLot]],
                         positions: dict[str, tuple[float, float]],
                         horizon_at,
