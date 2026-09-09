@@ -5,4 +5,4 @@ desktop/package.json (which names the installer and drives electron-updater),
 so every artifact carries the same number. The UI reads it via /api/version,
 which finally answers "which build am I running?".
 """
-APP_VERSION = "0.94.0"
+APP_VERSION = "0.95.0"

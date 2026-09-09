@@ -3,6 +3,18 @@
 Patch notes for each release. The newest version's section is pulled into the GitHub
 release automatically and shown inside the app when an update is ready to install.
 
+## v0.95.0 — "Earnings over time"
+
+- **The capital-gains list now reads newest first.** The latest month or week is at the top,
+  so the recent picture is where your eye lands instead of two years back.
+- **All / YTD toggle.** A pill next to Monthly/Weekly restricts the panel to the current
+  calendar year, with a summary line for the span (total, trades, periods). Your choice is
+  remembered.
+- **An earnings chart above the list.** The green line is the running total of realized gains
+  over time; the bars underneath are each period's own gain, red for a losing period. It
+  follows the same Monthly/Weekly and All/YTD settings as the list, so YTD shows this year's
+  climb from zero.
+
 ## v0.94.0 — "Profit, capital and tax, explained"
 
 - **Withdrawing profit no longer shrinks your capital.** If you took out more than you had

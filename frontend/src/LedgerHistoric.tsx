@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usd } from "./format";
 import { EquityCurve } from "./EquityCurve";
+import { EarningsCurve } from "./EarningsCurve";
 import { SkeletonCards, SkeletonPanel } from "./Skeleton";
 import { useToast } from "./Toast";
 import {
@@ -46,6 +47,9 @@ export function LedgerHistoric() {
   const [div, setDiv] = useState<Dividends | null>(null);
   const [margin, setMargin] = useState<MarginSummary | null>(null);
   const [cgGrain, setCgGrain] = useState<"month" | "week">("month");
+  // Capital-gains panel span: All vs this calendar year. Remembered like the equity range.
+  const [cgYtd, setCgYtd] = useState<boolean>(() => { try { return localStorage.getItem("cg.ytd.v1") === "1"; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem("cg.ytd.v1", cgYtd ? "1" : "0"); } catch { /* private mode */ } }, [cgYtd]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
@@ -203,6 +207,15 @@ export function LedgerHistoric() {
   const cap = h.capital;
   const peak = cap?.peak ?? h.peak_net_contributed ?? h.deposited_all_time;
   const ty = h.this_year;
+  // Capital-gains panel view. The YTD filter is a year-prefix match, which works for both
+  // "YYYY-MM" month keys and "YYYY-MM-DD" Monday week keys. Ascending feeds the chart's
+  // running total; the bar list shows newest first.
+  const cgAsc = (cg?.rows ?? [])
+    .filter((r) => !cgYtd || r.period.startsWith(String(year)))
+    .slice().sort((a, b) => (a.period < b.period ? -1 : a.period > b.period ? 1 : 0));
+  const cgDesc = cgAsc.slice().reverse();
+  const cgTotal = cgAsc.reduce((sum, r) => sum + r.cap_gains, 0);
+  const cgTrades = cgAsc.reduce((sum, r) => sum + r.trade_count, 0);
 
   return (
     <div>
@@ -468,20 +481,38 @@ export function LedgerHistoric() {
         <EquityCurve series={h.series} />
       </Panel>
 
-      {/* ---- Capital gains by period (scoped) ---- */}
+      {/* ---- Capital gains by period: the earnings curve (running total + per-period bars)
+           above the list, newest first. All/YTD picks the span; Monthly/Weekly the bucket. ---- */}
       {cg && cg.rows.length > 0 && (
         <Panel title={`Capital gains by ${cgGrain}`}
           right={
-            <span role="group" aria-label="Bucket size" style={{ display: "flex", gap: 6 }}>
-              {(["month", "week"] as const).map((g) => (
-                <button key={g} className="btn btn-sm" style={pillBtn(cgGrain === g)}
-                  aria-pressed={cgGrain === g} onClick={() => setCgGrain(g)}>
-                  {g === "month" ? "Monthly" : "Weekly"}
-                </button>
-              ))}
+            <span style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <span role="group" aria-label="Time span" style={{ display: "flex", gap: 6 }}>
+                <button className="btn btn-sm" style={pillBtn(!cgYtd)} aria-pressed={!cgYtd} onClick={() => setCgYtd(false)}>All</button>
+                <button className="btn btn-sm" style={pillBtn(cgYtd)} aria-pressed={cgYtd} onClick={() => setCgYtd(true)}>YTD</button>
+              </span>
+              <span role="group" aria-label="Bucket size" style={{ display: "flex", gap: 6 }}>
+                {(["month", "week"] as const).map((g) => (
+                  <button key={g} className="btn btn-sm" style={pillBtn(cgGrain === g)}
+                    aria-pressed={cgGrain === g} onClick={() => setCgGrain(g)}>
+                    {g === "month" ? "Monthly" : "Weekly"}
+                  </button>
+                ))}
+              </span>
             </span>
           }>
-          <MonthlyBars rows={cg.rows} />
+          <div style={S2.cfSummary}>
+            <span>{cgYtd ? `${year} so far` : "All time"} <b style={{ color: moneyColor(cgTotal) }}>{usd(cgTotal)}</b></span>
+            <span style={{ color: "var(--text-faint)" }}>{cgTrades} trades · {cgAsc.length} {cgGrain}{cgAsc.length === 1 ? "" : "s"}</span>
+          </div>
+          {cgAsc.length === 0 ? (
+            <p style={S.fine}>No closed trades in {year} yet.</p>
+          ) : (
+            <>
+              <EarningsCurve rows={cgAsc} />
+              <MonthlyBars rows={cgDesc} />
+            </>
+          )}
         </Panel>
       )}
     </div>
