@@ -3,6 +3,22 @@
 Patch notes for each release. The newest version's section is pulled into the GitHub
 release automatically and shown inside the app when an update is ready to install.
 
+## v0.98.0 — "The split, this time for real"
+
+- **Fixed: the v0.97 split detection could refuse a genuine split.** It expected Schwab's
+  restated average cost to be almost exactly your ledger's cost times the split factor.
+  Schwab's average uses its own tax-lot method while the app uses LIFO, so the two can differ
+  by 10–20% even with no split, and that gap made the check say "not a split". It now asks
+  whether the cost moved closer to the split factor than to no change at all, which accepts a
+  real split and still rejects a partial sale.
+- **Fixed: a split imported from a Schwab CSV could land on the wrong symbol.** Schwab labels
+  both legs of a reverse split with security IDs (CUSIPs) rather than the ticker, so the
+  imported split was filed under an ID that holds nothing and rescaled nothing. Imports now
+  attach the split to the ticker it belongs to, and existing mis-filed splits are repaired
+  automatically on the next sync.
+- Verified against a copy of a real ledger: a 1:5 reverse split now rescales the position to
+  the new share count with the cost basis unchanged to the cent.
+
 ## v0.97.0 — "Splits are not sales"
 
 - **Fixed: a stock split could look like a huge gain.** The live sync only reads trades,

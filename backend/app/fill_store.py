@@ -28,7 +28,8 @@ from sqlalchemy import delete, select
 
 from .db import SessionLocal
 from .db.models import FillRecord
-from .reconstruct import Fill
+from .reconstruct import Fill, reconstruct
+from .symbols import is_cusip_like
 from .util import csv_col
 
 log = logging.getLogger(__name__)
@@ -474,6 +475,11 @@ async def import_csv_fills(account_hash: str, csv_text: str) -> dict:
     if not parsed["ok"]:
         return {"ok": False, "error": parsed["error"], "added": 0}
     incoming = parsed["fills"]
+    # Schwab files BOTH legs of a reverse split under CUSIPs, so the parsed SPLT can be
+    # keyed by a CUSIP that holds nothing and rescales nothing (RCAX arrived as
+    # 88636Y599, 2026-09-09). Attribute it to the held ticker BEFORE dedup so it also
+    # dedups against a previously rekeyed row instead of re-inserting under the CUSIP.
+    await _attribute_split_dicts(account_hash, incoming)
 
     async with SessionLocal() as s:
         api_rows = (await s.execute(
@@ -563,6 +569,95 @@ async def import_csv_fills(account_hash: str, csv_text: str) -> dict:
 _SPLIT_MATCH_DAYS = 14   # an inferred split and the real record of it land within this window
 
 
+def attribute_cusip_split(cusip: str, old_total: float, open_totals: dict[str, float]) -> str | None:
+    """Pure: which held ticker does a split row filed under a CUSIP belong to? The one
+    whose open share count just before the split equals the split's OLD total (within
+    one share, for cash-in-lieu). Exactly one candidate → that ticker; none or several →
+    None (never guess). CUSIP-shaped keys are not candidates."""
+    if old_total <= 0:
+        return None
+    hits = [sym for sym, sh in open_totals.items()
+            if not is_cusip_like(sym) and abs(float(sh) - float(old_total)) < 1.0]
+    return hits[0] if len(hits) == 1 else None
+
+
+async def _open_totals_before(account_hash: str, day: date) -> dict[str, float]:
+    """{ticker: open shares} from the ledger's fills strictly before `day`."""
+    fills = await load_fills(account_hash)
+    prior = [f for f in fills if (f.at.date() if isinstance(f.at, datetime) else f.at) < day]
+    lots = reconstruct(prior)["open_lots"]
+    return {sym: sum(l.shares for l in ls) for sym, ls in lots.items()}
+
+
+async def _ticker_for_cusip_split(account_hash: str, cusip: str, old_total: float, day: date) -> str | None:
+    """Instruments API first (authoritative identity), then the quantity match."""
+    ticker = None
+    try:
+        from .schwab.auth import get_client
+        from .symbols import resolve_symbol
+        client = get_client()
+        if client is not None:
+            ticker = resolve_symbol(client, {"symbol": cusip, "cusip": cusip})
+    except Exception as e:
+        log.info(f"CUSIP {cusip}: instruments lookup unavailable ({e!r}); trying quantity match")
+    if not ticker and old_total > 0:
+        ticker = attribute_cusip_split(cusip, old_total, await _open_totals_before(account_hash, day))
+    return ticker
+
+
+async def _attribute_split_dicts(account_hash: str, fills: list[dict]) -> int:
+    """Rekey parsed SPLT dicts whose symbol is CUSIP-shaped, in place. Returns how many."""
+    n = 0
+    for f in fills:
+        if f.get("side") != "SPLT" or not is_cusip_like(f.get("symbol")):
+            continue
+        cusip = f["symbol"]
+        ticker = await _ticker_for_cusip_split(account_hash, cusip, float(f.get("price") or 0), f["trade_date"])
+        if not ticker:
+            log.warning(f"{account_hash[-4:]}: split row under CUSIP {cusip} ({f['shares']}/{f['price']}) "
+                        f"could not be attributed to a held ticker; stored as-is (rescales nothing)")
+            continue
+        f["symbol"] = ticker
+        f["fill_key"] = f["fill_key"].replace(cusip, ticker)
+        f["dkey"] = day_key(f["trade_date"], ticker, "SPLT", f["shares"], f["price"])
+        log.info(f"{account_hash[-4:]}: split row under CUSIP {cusip} attributed to {ticker}")
+        n += 1
+    return n
+
+
+async def _rekey_cusip_split_rows(account_hash: str) -> int:
+    """Heal: stored SPLT rows keyed by a CUSIP are re-keyed to the ticker they belong to.
+    If that ticker already has a SPLT within ±_SPLIT_MATCH_DAYS, the CUSIP row is a
+    duplicate of it and is deleted instead (one event, one rescale)."""
+    n = 0
+    async with SessionLocal() as s:
+        rows = (await s.execute(
+            select(FillRecord).where(FillRecord.account_hash == account_hash, FillRecord.side == "SPLT")
+        )).scalars().all()
+        cusip_rows = [r for r in rows if is_cusip_like(r.symbol)]
+        if not cusip_rows:
+            return 0
+        for r in cusip_rows:
+            cusip = r.symbol
+            ticker = await _ticker_for_cusip_split(account_hash, cusip, float(r.price or 0), r.trade_date)
+            if not ticker:
+                log.warning(f"{account_hash[-4:]}: stored split under CUSIP {cusip} still unattributed")
+                continue
+            dup = any(o.id != r.id and o.symbol == ticker
+                      and abs((o.trade_date - r.trade_date).days) <= _SPLIT_MATCH_DAYS for o in rows)
+            if dup:
+                await s.delete(r)
+                log.info(f"{account_hash[-4:]}: CUSIP split {cusip} duplicates an existing {ticker} split; removed")
+            else:
+                r.symbol = ticker
+                r.fill_key = (r.fill_key or "").replace(cusip, ticker)[:180]
+                log.warning(f"{account_hash[-4:]}: stored split under CUSIP {cusip} re-keyed to {ticker} "
+                            f"({r.shares}/{r.price}); lots will rescale on this projection")
+            n += 1
+        await s.commit()
+    return n
+
+
 async def _supersede_inferred_splits(s, account_hash: str) -> int:
     """Within an open session: delete source='inferred' SPLT rows whose symbol has a
     non-inferred SPLT within ±_SPLIT_MATCH_DAYS. Returns how many were removed."""
@@ -626,6 +721,10 @@ async def heal_ledger(account_hash: str) -> dict:
          (first-sync boundary day / GTC orders entered before the window).
     Costs one account scan; a healthy ledger is a no-op."""
     redated = evicted_csv = evicted_api = 0
+    try:
+        await _rekey_cusip_split_rows(account_hash)   # SPLT rows filed under a CUSIP → ticker
+    except Exception as e:
+        log.warning(f"heal {account_hash[-4:]}: CUSIP split rekey failed (non-fatal): {e!r}")
     async with SessionLocal() as s:
         rows = (await s.execute(
             select(FillRecord).where(FillRecord.account_hash == account_hash,

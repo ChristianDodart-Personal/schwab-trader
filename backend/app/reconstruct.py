@@ -212,10 +212,6 @@ def reconstruct(fills: list[Fill]) -> dict:
     return {"open_lots": open_lots, "closed": closed, "oversold": oversold}
 
 
-def _close(a: float, b: float, tol: float) -> bool:
-    return abs(a - b) <= tol * max(abs(b), 1e-9)
-
-
 def split_factor(recon_shares: float, actual_shares: float,
                  our_avg: float, schwab_avg: float) -> tuple[int, str] | None:
     """Decide whether Schwab's CURRENT holding is the fill-built holding after a stock
@@ -225,15 +221,24 @@ def split_factor(recon_shares: float, actual_shares: float,
       - SHARES: actual ≈ recon / k (reverse) or recon × k (forward), within one share
         (a reverse split drops the fractional remainder as cash-in-lieu).
       - COST:   Schwab restates the position's average price by the same factor
-        (× k reverse, ÷ k forward), so schwab_avg ≈ our_avg × k (or ÷ k) within 5%.
-    Selling 80% of a position also gives a 5:1 share ratio, but leaves Schwab's
-    average price unchanged, so it never passes the cost check. k is searched 2..100."""
+        (× k reverse, ÷ k forward). Schwab's average comes from THEIR tax-lot method
+        while ours is LIFO, so the two can legitimately differ by 10–20% even with no
+        split (the IREN case in Data health). The test is therefore not "within 5% of
+        k" but "closer to k than to 1": the cost ratio must exceed √k and sit inside
+        k/1.5 … k×1.5. RCAX 1:5: our LIFO avg $3.39 vs Schwab $15.10 → ratio 4.45,
+        √5 = 2.24, band 3.33…7.5 → split. A partial sale leaves Schwab's average where
+        it was, ratio ≈ 1 (±20%), never above √k for any k ≥ 2 → not a split.
+    k is searched 2..100."""
     if recon_shares <= _EPS or actual_shares <= _EPS or our_avg <= _EPS or schwab_avg <= _EPS:
         return None
+
+    def cost_moved_by(k: int, ratio: float) -> bool:
+        return ratio > k ** 0.5 and (k / 1.5) <= ratio <= (k * 1.5)
+
     for k in range(2, 101):
-        if abs(actual_shares - recon_shares / k) < 1.0 and _close(schwab_avg, our_avg * k, 0.05):
+        if abs(actual_shares - recon_shares / k) < 1.0 and cost_moved_by(k, schwab_avg / our_avg):
             return k, "reverse"
-        if abs(actual_shares - recon_shares * k) < 1.0 and _close(schwab_avg, our_avg / k, 0.05):
+        if abs(actual_shares - recon_shares * k) < 1.0 and cost_moved_by(k, our_avg / schwab_avg):
             return k, "forward"
     return None
 

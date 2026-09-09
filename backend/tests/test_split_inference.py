@@ -23,6 +23,23 @@ def test_forward_split_detected():
     assert split_factor(100, 200, 50.0, 25.0) == (2, "forward")
 
 
+def test_reverse_split_detected_despite_lifo_vs_broker_basis_gap():
+    # The live RCAX numbers: our LIFO avg $3.39, Schwab's restated avg $15.10 (their lot
+    # method), ratio 4.45 — an 11% gap from 5× that a tight tolerance rejected.
+    assert split_factor(729, 145, 3.39, 15.10) == (5, "reverse")
+
+
+def test_partial_sale_with_basis_methodology_gap_is_still_not_a_split():
+    # 80% sold AND a 15% LIFO-vs-FIFO difference in the averages: ratio 1.15, far below √5.
+    assert split_factor(729, 145, 3.39, 3.90) is None
+    # ...and for a 2:1 share ratio (sold half), where √2 = 1.41 is the closest bar to clear.
+    assert split_factor(200, 100, 10.0, 11.5) is None
+
+
+def test_forward_split_detected_despite_basis_gap():
+    assert split_factor(100, 200, 50.0, 28.0) == (2, "forward")   # ratio 1.79 > √2, in band
+
+
 def test_plain_partial_sale_is_not_a_split():
     # Selling 80% leaves a 5:1 share ratio but Schwab's average cost does not move.
     assert split_factor(729, 145, 3.39, 3.39) is None
