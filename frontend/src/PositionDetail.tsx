@@ -42,7 +42,7 @@ export function PositionDetail({ symbol, mode, onClose, embedded }: { symbol: st
   // locked, its limit defaults to the ask).
   const openLifoSell = (n: number, note: string) => {
     if (!d) return;
-    setTicket({ symbol: d.symbol, side: "SELL", order_type: "LIMIT", quantity: n, limit_price: d.price ?? 0, note });
+    setTicket({ symbol: d.symbol, side: "SELL", order_type: "LIMIT", quantity: n, limit_price: d.price ?? 0, note, price_label: "Last" });
   };
 
   useEffect(() => {
@@ -96,7 +96,7 @@ export function PositionDetail({ symbol, mode, onClose, embedded }: { symbol: st
           <Stat label="Shares" value={d.shares.toLocaleString()} />
           <Stat label="Invested" value={usd(d.invested)} term="invested" />
           <Stat label="Basis / Share" value={usd(d.basis_per_share)} term="cost_basis" />
-          <Stat label="LILO %" value={pct(d.lilo_pct)} color={signColor(d.lilo_pct)} />
+          <Stat label="LILO %" value={pct(d.lilo_pct)} color={signColor(d.lilo_pct)} term="lilo_pct" />
           <Stat label="Unrealized" value={d.unrealized == null ? "—" : usd(d.unrealized)} color={signColor(d.unrealized)} term="unrealized_pl" />
           <Stat label="Realized" value={usd(d.realized)} color={signColor(d.realized)} term="realized_pl" />
           {d.last_sold != null && <Stat label="Last sold" value={usd(d.last_sold)} />}
@@ -105,6 +105,13 @@ export function PositionDetail({ symbol, mode, onClose, embedded }: { symbol: st
         </div>
       )}
 
+      {!d.is_watch && d.cost_unknown && (
+        <p style={{ color: "var(--warn)", fontSize: "var(--fs-sm)", margin: "8px 0 0" }}>
+          Part of this position has no known cost (marked “cost unknown” below). Those shares are left out of
+          Invested, Basis, P/L, LILO and the sell signal. Import a Schwab transactions CSV covering the buy, or
+          review it by hand.
+        </p>
+      )}
       {d.is_watch && (
         <p style={{ color: "var(--text-dim)", fontSize: "var(--fs-sm)", margin: "8px 0 0" }}>
           On your watchlist — no open position{d.last_held != null ? `, last held at ${usd(d.last_held)}` : ""}.
@@ -154,10 +161,15 @@ export function PositionDetail({ symbol, mode, onClose, embedded }: { symbol: st
             </tr>
           </thead>
           <tbody>
-            {d.lots.map((l) => (
+            {d.lots.map((l, i) => (
               <tr key={`f${l.rung}`}>
                 <td className="left">
                   {l.rung}
+                  {l.cost_unknown && (
+                    <span style={{ ...S.prior, color: "var(--warn)" }} title="No known cost for this lot: no sell target, profit or P/L is shown for it">
+                      cost unknown
+                    </span>
+                  )}
                   {l.source === "position" && (
                     <span style={S.prior} title="Held from before our fill history — quantity is from Schwab, cost is the position average (not an exact buy fill)">
                       prior
@@ -168,7 +180,13 @@ export function PositionDetail({ symbol, mode, onClose, embedded }: { symbol: st
                   <td key={c.id} style={{ textAlign: c.align }}>{c.render(l)}</td>
                 ))}
                 <td style={{ textAlign: "right" }}>
-                  <button className="btn btn-sell btn-sm" disabled={busy} onClick={() => openSell(l.id)}>Sell</button>
+                  {/* LIFO: a sale always retires the newest position first, so only the
+                      last row can honestly be sold on its own. Deeper rungs are reached
+                      by selling more shares via "Sell shares" below. */}
+                  {i === d.lots.length - 1 && (
+                    <button className="btn btn-sell btn-sm" disabled={busy} onClick={() => openSell(l.id)}
+                      title="Sells this position: the newest one, which LIFO sells first">Sell</button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -529,7 +547,7 @@ function LifoSell({ d, busy, onReview }: {
             ))}
           </div>
           <div style={LS.est}>
-            <span>Est. proceeds <b>{usd(proceeds)}</b> at {usd(price)}</span>
+            <span>Est. proceeds <b>{usd(proceeds)}</b> at the last price {usd(price)}</span>
             <span style={LS.computed} title="App-calculated: proceeds minus the LIFO cost basis of the retired positions">
               Est. realized <b style={{ color: estPl >= 0 ? "var(--pos)" : "var(--neg)" }}>{estPl >= 0 ? "+" : ""}{usd(estPl)}</b>
             </span>

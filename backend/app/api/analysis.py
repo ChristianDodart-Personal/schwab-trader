@@ -73,7 +73,6 @@ async def strategy_analysis(account_hash: str | None = None) -> dict:
             thesis_in.append({"symbol": sym, "price": price, "first_buy": first_buy,
                               "min_buy": min_buy, "lots_deep": len(sym_lots), "days_held": days_held})
 
-    cap = float(cfg.guardrails.get("max_position_pct_of_portfolio", 0.05))
     target_lots = int(cfg.guardrails.get("target_lots_deep", 6))
     drops = [float(d) for d in cfg.guardrails.get("stress_drops", [0.10, 0.25, 0.50])]
 
@@ -88,8 +87,7 @@ async def strategy_analysis(account_hash: str | None = None) -> dict:
         "as_of": today.isoformat(),
         "held_count": len(stress_in),
         "concentration": {
-            "cap": cap,
-            "rows": analysis.concentration_by_underlying(conc_in, cap),
+            "rows": analysis.concentration_by_underlying(conc_in),
         },
         "stress": {
             "drops": drops,

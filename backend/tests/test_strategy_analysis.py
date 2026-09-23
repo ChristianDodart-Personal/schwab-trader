@@ -15,29 +15,26 @@ CFG = StrategyConfig.load()  # the shipped default_strategy.yaml
 
 
 # --- concentration_by_underlying ---------------------------------------------
-def test_concentration_rolls_etfs_into_underlying_and_flags_hidden():
-    # RCAT stock 4% + its 2x ETF 3% => 7% combined, but neither member alone breaches 5%.
+def test_concentration_rolls_etfs_into_underlying():
+    # RCAT stock 4% + its 2x ETF 3% => one 7% exposure.
     positions = [
         {"symbol": "RCAT", "underlying": None, "value": 400.0},
         {"symbol": "RCATX", "underlying": "RCAT", "value": 300.0},
         {"symbol": "BIG", "underlying": None, "value": 9300.0},
     ]
-    rows = concentration_by_underlying(positions, cap=0.05)
+    rows = concentration_by_underlying(positions)
     by = {r["key"]: r for r in rows}
     assert by["RCAT"]["value"] == 700.0
     assert by["RCAT"]["pct"] == 0.07
     assert by["RCAT"]["symbols"] == ["RCAT", "RCATX"]
-    assert by["RCAT"]["over_cap"] is True
-    assert by["RCAT"]["hidden"] is True          # combined breach the per-ticker view misses
-    assert by["BIG"]["over_cap"] is True
-    assert by["BIG"]["hidden"] is False          # single member already over cap
+    assert "over_cap" not in by["RCAT"]            # no cap any more: exposure only
     assert rows[0]["key"] == "BIG"               # sorted by exposure desc
 
 
 def test_concentration_ignores_zero_and_negative_values():
     rows = concentration_by_underlying(
         [{"symbol": "A", "underlying": None, "value": 0.0},
-         {"symbol": "B", "underlying": None, "value": -5.0}], cap=0.05)
+         {"symbol": "B", "underlying": None, "value": -5.0}])
     assert rows == []
 
 

@@ -26,7 +26,7 @@ type Cfg = {
 
 const ROWS = [
   "Sell target", "Buy-ladder drops", "Sizing ($ / next buy)",
-  "Max position % of portfolio", "Cash reserve %", "Deployment scaling", "Rules source",
+  "Deployment scaling", "Rules source",
 ] as const;
 
 function summarize(cfg: Cfg | undefined): Record<string, string> {
@@ -35,14 +35,10 @@ function summarize(cfg: Cfg | undefined): Record<string, string> {
   const sell = s.sell?.default_mode === "pct_above"
     ? `+${((s.sell?.pct_above ?? 0) * 100).toFixed(1)}% above cost`
     : `+$${s.sell?.dollar_gain ?? "—"} per lot`;
-  const g = s.guardrails ?? {};
-  const num = (k: string) => (typeof g[k] === "number" ? `${g[k] as number}%` : "—");
   return {
     "Sell target": sell,
     "Buy-ladder drops": (s.buy_ladder?.drops ?? []).map((d) => `${d.drop_pct}%`).join(" / ") || "—",
     "Sizing ($ / next buy)": (s.sizing_tiers ?? []).map((t) => usd(t.dollars)).join(" / ") || "—",
-    "Max position % of portfolio": num("max_position_pct_of_portfolio"),
-    "Cash reserve %": num("cash_reserve_pct"),
     "Deployment scaling": s.deployment_scaling?.enabled ? "on" : "off",
     "Rules source": cfg.strategy_is_default ? "defaults (unset)" : "customized",
   };

@@ -7,7 +7,6 @@ type PhoneCfg = {
   channel: "off" | "ntfy" | "email";
   ntfy_url: string; smtp_host: string; smtp_port: number; smtp_user: string;
   smtp_from: string; smtp_to: string; smtp_tls: boolean; smtp_pass_set?: boolean;
-  cat_alerts: boolean; cat_triggers: boolean; cat_fills: boolean;
 };
 
 export function PhoneNotify() {
@@ -23,7 +22,6 @@ export function PhoneNotify() {
         smtp_host: s.smtp_host ?? "", smtp_port: s.smtp_port ?? 587, smtp_user: s.smtp_user ?? "",
         smtp_from: s.smtp_from ?? "", smtp_to: s.smtp_to ?? "", smtp_tls: s.smtp_tls ?? true,
         smtp_pass_set: !!s.smtp_pass_set,
-        cat_alerts: s.cat_alerts ?? true, cat_triggers: s.cat_triggers ?? true, cat_fills: s.cat_fills ?? true,
       }))
       .catch(() => {});
   }, []);

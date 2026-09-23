@@ -34,11 +34,9 @@ Ships as a Windows desktop app (Electron shell + bundled backend) that
   and 52-week overlays, per-symbol realized/unrealized/dividend split, notes, and
   one-click price alerts.
 - **Ledger** — *Historic* (balances, realized gains, deposits, equity curve,
-  margin/deployment, XIRR vs a benchmark), *Activity* ($ bought/sold/net by day/
+  margin/deployment), *Activity* ($ bought/sold/net by day/
   week/month/year), *Trades* (closed round-trips + win rate/profit factor), and
   *Predictive* (goal pacing, year-end projection, estimated progressive tax).
-- **Screener** — vet a symbol against the strategy guardrails with Schwab
-  fundamentals + FMP sector/industry/country classification.
 - **Notifications** — price alerts, strategy triggers and fills to the in-app bell
   and desktop, with optional phone reach (ntfy / email) and per-category controls.
 - **Multi-account / multi-profile**, automatic SQLite backups, and an in-app
@@ -145,8 +143,8 @@ All strategy numbers live in **`backend/app/strategy/default_strategy.yaml`**
 reads them — edit the YAML, restart, done. No plumbing code changes.
 
 ## Secrets
-`backend/.env` holds your Schwab client ID/secret (gitignored); the FMP key and
-Schwab token are stored encrypted per-install. Rotate the Schwab secret
+`backend/.env` holds your Schwab client ID/secret (gitignored); the Schwab token
+and app secrets are stored encrypted per-install. Rotate the Schwab secret
 periodically on developer.schwab.com.
 
 [schwab-py]: https://github.com/alexgolec/schwab-py

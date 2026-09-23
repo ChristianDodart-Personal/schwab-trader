@@ -31,8 +31,8 @@ class Ticker(Base):
     year_low: Mapped[float | None] = mapped_column(Numeric(14, 4))
     market_cap: Mapped[float | None] = mapped_column(Numeric(20, 2))
     quote_at: Mapped[datetime | None] = mapped_column()
-    # Classification (Schwab omits it): user-tagged OR auto-filled from FMP. Drives the
-    # dashboard sector column, diversification view, and the screener's sector/country
+    # Classification (Schwab omits it): user-tagged. Drives the dashboard sector column
+    # and the diversification view; country is legacy and no longer set anywhere
     # exclusion guardrails.
     sector: Mapped[str | None] = mapped_column(String(48))
     industry: Mapped[str | None] = mapped_column(String(64))

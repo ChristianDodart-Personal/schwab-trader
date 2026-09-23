@@ -7,10 +7,10 @@ and these functions stay trivially unit-testable against the spreadsheet.
 Mapping back to the sheet (Longs tab):
   suggested_shares    <- E6   (ifs on rungs filled -> $500/$1000/$1500 / price)
   next_buy_price      <- K10..K18  (prev price * (1 - tier drop))
-  lilo_pct            <- J6   ((current / min buy) - 100%)
+  lilo_pct            <- J6   ((current / newest lot's buy) - 100%)
   basis_per_share     <- J19  (total invested / total shares)
   is_buy_mark         <- I6   (current < next buy-sug)
-  is_sell_mark        <- G6   (current > min sell target, > 0)
+  is_sell_mark        <- G6   (current > the newest lot's sell target)
 """
 from __future__ import annotations
 
@@ -62,11 +62,12 @@ def next_buy_price(prev_buy_price: float, next_rung: int, cfg: StrategyConfig,
     return prev_buy_price * (1.0 - _drop_for_rung(next_rung, cfg, deployed_pct))
 
 
-def lilo_pct(current_price: float, min_buy_price: float) -> float:
-    """How far current price sits above the cheapest lot (e.g. 0.12 = +12%)."""
-    if min_buy_price <= 0:
+def lilo_pct(current_price: float, last_buy_price: float) -> float:
+    """How far current price sits above the NEWEST (last-in) lot's buy price, the lot a
+    LIFO sale retires first (e.g. 0.12 = +12%, -0.08 = 8% below the last buy)."""
+    if last_buy_price <= 0:
         return 0.0
-    return (current_price / min_buy_price) - 1.0
+    return (current_price / last_buy_price) - 1.0
 
 
 def basis_per_share(total_invested: float, total_shares: float) -> float:
@@ -94,6 +95,8 @@ def sell_target_price(
     raise ValueError(f"unknown sell mode: {mode!r}")
 
 
-def is_sell_mark(current_price: float, sell_targets: list[float]) -> bool:
-    live = [t for t in sell_targets if t > 0]
-    return bool(live) and current_price > min(live)
+def is_sell_mark(current_price: float, sell_target: float) -> bool:
+    """SELL when price clears the NEWEST lot's target. Sells are LIFO, so that lot is the
+    one a sale actually books against; an older lot hitting its own (lower) target would
+    signal a sale that realizes a loss on the newest lot."""
+    return sell_target > 0 and current_price > sell_target

@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from .. import ledger as ledger_svc
 from .. import market_data as market_svc
 from .. import notifications as notifications_svc
-from .. import screener as screener_svc
+from .. import market_hours as market_hours_svc
 from .. import watchlist as watchlist_svc
 from ..dashboard import build_dashboard, build_position_detail, invalidate_dashboard_cache
 from ._shared import _selected
@@ -124,18 +124,7 @@ async def read_notification(note_id: int) -> dict:
 
 @router.get("/api/market-hours")
 async def market_hours() -> dict:
-    return await screener_svc.market_hours()
-
-
-@router.get("/api/movers")
-async def movers(index: str = "EQUITY_ALL", sort: str = "PERCENT_CHANGE_UP") -> dict:
-    return await screener_svc.movers(index, sort)
-
-
-@router.get("/api/screen/{symbol}")
-async def screen_symbol(symbol: str) -> dict:
-    """Fundamentals for one symbol + pass/fail vs the selected account's guardrails."""
-    return await screener_svc.vet(symbol, await _selected())
+    return await market_hours_svc.market_hours()
 
 
 @router.get("/api/dashboard")

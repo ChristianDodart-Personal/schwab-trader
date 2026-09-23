@@ -29,11 +29,12 @@ buy_ladder:
     - up_to_rung: 10    # rungs 8-10 each 16% below the prior rung
       drop_pct: 0.16
 
-# --- OPTIONAL: scale the ladder's required drop % by how deployed the account is
-# --- (the sheet's Tier 1/2/3 behavior). Heavily deployed ⇒ larger multiplier ⇒ wait
-# --- for deeper dips before adding, conserving buying power. Disabled by default:
-# --- with enabled:false the ladder is fixed (drop_pct as written above), unchanged.
-# --- deployed_pct = market value in play ÷ (that value + remaining buying power).
+# --- Scale the ladder's required drop % by how deployed the account is (the sheet's
+# --- Tier 1/2/3 behavior). Heavily deployed ⇒ larger multiplier ⇒ wait for deeper
+# --- dips before adding. enabled:false = fixed ladder (drop_pct exactly as above).
+# --- deployed % = long market value ÷ your own equity (the dashboard's Deployment
+# --- meter): 100% = fully invested with your own money, above 100% = on margin.
+# --- Multipliers below 1.0 are raised to 1.0: scaling never makes dips shallower.
 deployment_scaling:
   enabled: true               # recommended ON: only ever requires DEEPER dips, never shallower
   tiers:
@@ -50,21 +51,12 @@ sell:
   dollar_gain: 50.0                # take profit when this $ gain on the lot is reached
   pct_above: 0.11                  # ...or this % above the lot's buy price
 
-# --- Guardrails (informational + future enforcement)
+# --- Method-tab references (advisory only; nothing here blocks an order)
 guardrails:
-  max_position_pct_of_portfolio: 0.05   # keep each stock under 5%
-  target_lots_deep: 6                    # ~6 lots deep on average
-  cash_reserve_pct: 0.30                 # hold 30% of total available in reserve
+  target_lots_deep: 6                    # ~6 lots deep on average (ladder-stress view)
   # Advisory thesis-break thresholds (Method tab). Purely informational warnings — the
   # ladder never auto-sells; these just surface names it would otherwise keep buying.
   thesis_break_down_pct: 0.50            # flag a name down >=50% from its first buy
   thesis_break_max_hold_days: 240        # flag a name held this long without closing out
   # Downside scenarios for the ladder-stress view (Method tab).
   stress_drops: [0.10, 0.25, 0.50]
-
-# --- Universe screening (informational for now)
-universe:
-  market_cap_min: 1000000000      # $1B
-  market_cap_max: 30000000000     # $30B
-  country: US
-  exclude: [china, biotech]

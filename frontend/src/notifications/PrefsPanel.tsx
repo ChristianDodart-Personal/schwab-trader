@@ -61,7 +61,7 @@ export function PrefsPanel({ prefs, savePrefs, desktopPerm, onEnableDesktop }: {
         <input type="checkbox" checked={prefs.muted} onChange={(e) => savePrefs({ muted: e.target.checked })} />
         <span>
           <b>Mute all notifications</b>
-          <div style={G.dim}>Nothing pops, badges, or texts you. Everything is still recorded in the feed below.</div>
+          <div style={G.dim}>Nothing pops, badges, or texts you, except reminders to reconnect Schwab (the app stops working without them). Everything is still recorded in the feed below.</div>
         </span>
       </label>
 

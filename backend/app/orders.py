@@ -531,6 +531,20 @@ async def suggest_sell(lot_id: int, account_hash: str) -> dict:
         )).scalar_one_or_none()
     if lot is None:
         return {"error": f"lot {lot_id} not found"}
+    # Sells are LIFO. Schwab only ever receives "sell N shares of SYMBOL", and the ledger
+    # retires the NEWEST lot first, so a ticket priced off an older lot would show shares,
+    # a target and a profit that aren't what gets booked. Only the last-in lot (highest
+    # rung, the same rule bulk-sell enforces) gets a per-lot suggestion; larger sells go
+    # through the share-count LIFO ticket.
+    async with SessionLocal() as s:
+        newest = (await s.execute(
+            select(Lot).where(Lot.account_hash == account_hash, Lot.symbol == lot.symbol)
+            .order_by(Lot.rung.desc(), Lot.id.desc()).limit(1)
+        )).scalar_one_or_none()
+    if newest is not None and newest.id != lot.id:
+        return {"error": f"{lot.symbol} sells last-in first: the next shares sold come from "
+                         f"position {newest.rung}, not {lot.rung}. Sell from that position, or use "
+                         f"'Sell shares' to sell more than it holds."}
     cfg = await config_store.get_strategy(account_hash)
     bp = _f(lot.buy_price)
     sh = _f(lot.shares)

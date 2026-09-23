@@ -328,7 +328,7 @@ export function OrderTicket({
                   {suggestion.limit_price > 0 && (
                     <button type="button" style={S.spreadBtn}
                       onClick={() => { priceTouched.current = true; setPrice(suggestion.limit_price); }}>
-                      Target {usd(suggestion.limit_price)}
+                      {suggestion.price_label ?? "Target"} {usd(suggestion.limit_price)}
                     </button>
                   )}
                 </div>
@@ -395,7 +395,7 @@ export function OrderTicket({
               price {livePrice ? usd(livePrice) : "(loading…)"}; the actual fill price may differ.
             </p>
           )}
-          {!needsLimit && suggestion.limit_price > 0 && (
+          {!needsLimit && suggestion.limit_price > 0 && !suggestion.price_label && (
             <p style={S.note}>
               Strategy {isBuy ? "position" : "target"} price is {usd(suggestion.limit_price)} — switch to
               Limit to place the ladder order instead of a market fill.

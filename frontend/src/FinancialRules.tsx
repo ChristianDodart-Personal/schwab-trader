@@ -23,7 +23,6 @@ type Strategy = {
   sell: { default_mode: string; dollar_gain: number; pct_above: number };
   deployment_scaling: { enabled: boolean; tiers: DeployTier[] };
   guardrails: Record<string, unknown>;
-  universe: Record<string, unknown>;
 };
 type Config = { account_hash: string; strategy: Strategy; strategy_is_default: boolean };
 
@@ -199,14 +198,14 @@ export function FinancialRules({ onDirtyChange }: { onDirtyChange?: (dirty: bool
 
       {/* ---------------- DEPLOYMENT SCALING (the formerly-hidden rule) ---------------- */}
       <Rule title="Deployment scaling — get pickier as you get fully invested"
-        desc="Optional. When a lot of your buying power is already in the market, this makes the ladder demand DEEPER dips before adding more — so you conserve cash for real bargains when you’re stretched. It only ever requires bigger drops, never smaller, so it can’t make you buy more aggressively.">
+        desc="Optional. When most of your own money is already in the market, this makes the ladder demand DEEPER dips before adding more, so you conserve cash for real bargains when you’re stretched. It only ever requires bigger drops, never smaller (a multiplier below 1× is treated as 1×), so it can’t make you buy more aggressively.">
         <label style={S.toggle}>
           <input type="checkbox" checked={!!ds.enabled} onChange={(e) => toggleDeploy(e.target.checked)} />
           <span><b>{ds.enabled ? "On" : "Off"}</b> — adapt buy triggers to how invested the account is</span>
         </label>
         {ds.enabled && (
           <>
-            <p style={S.subtle}>“Deployed %” = money in the market ÷ (that money + buying power still available). Each tier applies when you’re at or above its deployed level; the multiplier scales the ladder drop above.</p>
+            <p style={S.subtle}>“Deployed %” = money in the market ÷ your own equity (the dashboard’s Deployment meter). 100% = fully invested with your own money; above 100% = using margin. Each tier applies when you’re at or above its deployed level; the multiplier scales the ladder drop above.</p>
             <Grid cols="1fr 1fr auto">
               <Head>When deployed ≥</Head><Head>Require dips this much deeper</Head><span />
               {ds.tiers.map((t, i) => (
@@ -246,23 +245,13 @@ export function FinancialRules({ onDirtyChange }: { onDirtyChange?: (dirty: bool
         </Example>
       </Rule>
 
-      {/* ---------------- GUARDRAILS ---------------- */}
-      <Rule title="Guardrails — the discipline limits"
-        desc="Risk limits that keep the portfolio balanced. The single-stock cap flags any holding that grows past your limit (shown on the dashboard). “Lots deep” and “cash reserve” are targets you steer toward.">
-        <Field label="Max any one stock (% of portfolio)"
-          hint="A holding above this gets an amber ⚠ flag on the dashboard.">
-          <PctInput value={gnum(st.guardrails, "max_position_pct_of_portfolio", 0.05)}
-            onChange={(v) => setGuard("max_position_pct_of_portfolio", v)} />
-        </Field>
+      {/* ---------------- LADDER DEPTH (Method-tab stress reference) ---------------- */}
+      <Rule title="Ladder depth — how deep you plan to be able to go"
+        desc="A planning number, not a limit: nothing stops a buy at this depth. The Method tab uses it to stress-test how much a fully-laddered name would commit.">
         <Field label="Target positions deep (average)"
           hint="Roughly how many positions deep you aim to be able to support per stock.">
           <NumInput value={gnum(st.guardrails, "target_lots_deep", 6)} min={1}
             onChange={(v) => setGuard("target_lots_deep", v)} />
-        </Field>
-        <Field label="Cash reserve to keep (%)"
-          hint="Share of total capital you aim to keep uninvested as dry powder.">
-          <PctInput value={gnum(st.guardrails, "cash_reserve_pct", 0.30)}
-            onChange={(v) => setGuard("cash_reserve_pct", v)} />
         </Field>
       </Rule>
 
@@ -304,7 +293,7 @@ function LadderPreview({ drops, maxRungs }: { drops: Drop[]; maxRungs: number })
   const rows = useMemo(() => ladderPreviewRows(drops, maxRungs), [drops, maxRungs]);
   return (
     <Example>
-      <div style={{ marginBottom: 4 }}>Starting from a first buy at <b>$100</b>, the next buys would trigger at:</div>
+      <div style={{ marginBottom: 4 }}>Starting from a first buy at <b>$100</b>, the next buys would trigger at <span style={{ color: "var(--text-dim)" }}>(before deployment scaling, which can make each drop deeper)</span>:</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         {rows.map((r) => (
           <span key={r.rung} style={S.chip}>

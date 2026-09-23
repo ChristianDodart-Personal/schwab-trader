@@ -28,7 +28,7 @@ def _looks_etf(blob: str) -> bool:
 def classify(name: str | None, industry: str | None, market_cap: float | None,
              is_etf: bool | None = None) -> str:
     """Return a risk level in LEVELS. Unknown/none-data → 'medium' (neutral). `is_etf`, when
-    known (e.g. from FMP in the screener), is authoritative; else ETF-ness is inferred from
+    known (a stored industry tag), is authoritative; else ETF-ness is inferred from
     the name/industry."""
     blob = f"{name or ''} {industry or ''}".lower()
     etf = is_etf if is_etf is not None else _looks_etf(blob)

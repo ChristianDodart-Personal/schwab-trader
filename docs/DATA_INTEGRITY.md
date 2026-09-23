@@ -78,7 +78,7 @@ also repairs the ordering of previously imported rows.
 | Dividends / interest | CSV import | manual refresh from API where exposed | app_setting JSON log (deduped day+amount+symbol) | re-import safe; per-symbol totals recompute |
 | Daily balance series | nightly snapshot scheduler | — (accrues going forward only) | `daily_balance` | idempotent daily upsert; gaps are visible, not faked |
 | Quotes / 52wk levels | API stream + price history | — | in-memory + `ticker` cache | demo-mode fallback is clearly labeled; money paths refuse untrusted quotes |
-| Ticker classification (sector/industry/ETF) | FMP profile (day-cached) | user edit | `ticker` | enrich-on-add + bulk re-enrich button |
+| Ticker classification (sector, leveraged-ETF link) | user edit in the drill-down | name-based leveraged-ETF detection | `ticker` | edits apply immediately |
 | Strategy config / prefs / rules | user | defaults | YAML + `app_setting` | versioned defaults; validation endpoint |
 | Audit log (fills as events) | API fills | — | `audit_event` (unique fill_key) | insert-or-ignore on every resync |
 

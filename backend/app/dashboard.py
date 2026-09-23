@@ -189,8 +189,12 @@ def _summary_row(symbol: str, lots: list[Lot], ticker: Ticker | None,
 
     shares = sum(_f(l.shares) for l in lots)   # total shares held (every lot)
     positions = len(lots)
-    last = lots[-1]  # highest rung (loaded ordered by rung)
+    last = lots[-1]  # highest rung (loaded ordered by rung) = the lot a LIFO sale retires
     last_amount = _f(last.shares) * _f(last.buy_price)
+    # If the newest lot has no known cost, the numbers that describe it (last-position
+    # P/L, LILO, the SELL chip) can't be computed honestly: they're left empty and the
+    # row is flagged cost_unknown so the ticker gets a 'needs review' marker instead.
+    last_priced = _f(last.buy_price) > 0
 
     # Cost basis, P/L, signals and dip math all use only lots with a KNOWN cost basis.
     # A backfilled lot we couldn't price (buy_price <= 0 — e.g. Schwab reported no
@@ -201,12 +205,9 @@ def _summary_row(symbol: str, lots: list[Lot], ticker: Ticker | None,
     priced_lots = [l for l in lots if _f(l.buy_price) > 0]
     priced_shares = sum(_f(l.shares) for l in priced_lots)
     invested = sum(_f(l.shares) * _f(l.buy_price) for l in priced_lots)
-    buy_prices = [_f(l.buy_price) for l in priced_lots]
-    min_buy = min(buy_prices) if buy_prices else 0.0
 
     sell_anchor = priced_lots[-1] if priced_lots else last
     next_buy = rules.next_buy_price(_f(sell_anchor.buy_price), positions + 1, cfg, deployed_pct)
-    sell_targets = [_lot_sell_target(l, cfg) for l in priced_lots]
     log_profit, trades, realized_first = realized
     year_profit, year_trades = year_realized
 
@@ -239,13 +240,16 @@ def _summary_row(symbol: str, lots: list[Lot], ticker: Ticker | None,
                                         today_trade[0], today_trade[1],
                                         today_trade[2], today_trade[3]), 2)
               if has_price and quote.get("netChange") is not None else None),
-        "lilo_pct": round(rules.lilo_pct(price, min_buy), 4) if has_price else None,
+        "lilo_pct": round(rules.lilo_pct(price, _f(last.buy_price)), 4) if has_price and last_priced else None,
         "portfolio_pct": round(invested / total_invested, 4) if total_invested else None,
         "next_buy_price": round(next_buy, 4),
         "buy_mark": rules.is_buy_mark(price, next_buy) if has_price else False,
-        "sell_mark": rules.is_sell_mark(price, sell_targets) if has_price else False,
-        "last_pos_cost": round(last_amount, 2),
-        "last_pos_profit": round(price * _f(last.shares) - last_amount, 2) if has_price else None,
+        "sell_mark": rules.is_sell_mark(price, _lot_sell_target(last, cfg)) if has_price and last_priced else False,
+        "last_pos_cost": round(last_amount, 2) if last_priced else None,
+        "last_pos_profit": round(price * _f(last.shares) - last_amount, 2) if has_price and last_priced else None,
+        # Some lot in this position has no known cost (e.g. a backfill Schwab gave no
+        # average for): its value is kept out of cost/P/L; the UI flags it for review.
+        "cost_unknown": len(priced_lots) < len(lots),
         # The price you last sold a lot of this at (most recent round-trip). A subtle
         # re-entry / trim reference on held rows — mirrors watch rows' "last held".
         "last_sold": round(last_sold, 4) if last_sold else None,
@@ -257,7 +261,7 @@ def _summary_row(symbol: str, lots: list[Lot], ticker: Ticker | None,
         "first_buy_date": first_buy.isoformat() if first_buy else None,
         # Dividends received for this name + full total return (realized + unrealized + divs).
         "dividends": round(sym_div, 2),
-        "total_return": round(log_profit + sym_div + (shares * price - invested if has_price else 0.0), 2),
+        "total_return": round(log_profit + sym_div + (priced_shares * price - invested if has_price else 0.0), 2),
     }
 
 
@@ -432,15 +436,18 @@ async def _build_dashboard_uncached(account_hash: str) -> dict:
 
     # Header metric — "Harvestable": the profit you could lock in RIGHT NOW by selling
     # every profitable last position, measured vs. each last lot's entry price. It is
-    # exactly the sum of the positive "Last Pos P/L" cells in the table, and equals what
-    # the "Sell profitable" bulk action would realize. $0 when every last position is
+    # exactly the sum of the positive "Last Pos P/L" cells in the table (bulk Sell sells
+    # whole shares and needs a live Schwab quote, so it can book slightly less). $0 when every last position is
     # underwater — a ladder trader harvests winners and holds losers, so the actionable
     # header number is "what's on the table to take", NOT today's drift vs. yesterday's
     # close. ALL-OR-NOTHING: None (→ UI hides it) until every held position is priced, so
     # a warming feed never shows a wrong figure. (Per-row day_change is still emitted for
     # anyone who wants intraday drift.)
     held = [r for r in rows if not r["is_watch"]]
-    priced = bool(held) and all(r["last_pos_profit"] is not None for r in held)
+    # Rows whose newest lot has no known cost (last_pos_cost None) can't contribute a
+    # harvestable figure; leave them out rather than hiding the whole KPI.
+    known = [r for r in held if r["last_pos_cost"] is not None]
+    priced = bool(known) and all(r["last_pos_profit"] is not None for r in known)
     # Aggregate header metrics for the customizable KPI widgets. All-or-nothing on the
     # priced gate (same as harvestable) so a warming feed never shows a partial total.
     # day_change can be None on a held row even when priced (quote carried no netChange),
@@ -457,7 +464,7 @@ async def _build_dashboard_uncached(account_hash: str) -> dict:
         "mode": hub.mode,
         "account_hash": account_hash,
         "total_invested": round(total_invested, 2),
-        "harvestable": round(sum(r["last_pos_profit"] for r in held if r["last_pos_profit"] > 0), 2) if priced else None,
+        "harvestable": round(sum(r["last_pos_profit"] for r in known if r["last_pos_profit"] > 0), 2) if priced else None,
         "total_day_change": total_day_change,
         "total_value": round(sum((r["current_value"] or 0) for r in held), 2) if val_priced else None,
         "total_unrealized": round(sum((r["unrealized"] or 0) for r in held), 2) if val_priced else None,
@@ -496,7 +503,7 @@ async def build_position_detail(symbol: str, account_hash: str) -> dict | None:
         lots = (
             await s.execute(
                 select(Lot).where(Lot.symbol == symbol, Lot.account_hash == account_hash)
-                .order_by(Lot.rung)
+                .order_by(Lot.rung, Lot.id)   # id breaks rung ties: the last row is the LIFO-next lot
             )
         ).scalars().all()
         ticker = (
@@ -555,16 +562,20 @@ async def build_position_detail(symbol: str, account_hash: str) -> dict | None:
     price = _f(price) if price is not None else None
     has_price = price is not None and price > 0
 
-    buy_prices = [_f(l.buy_price) for l in lots]
+    # Same rules as the dashboard row: cost, basis and P/L use only lots with a KNOWN
+    # cost; LILO is measured from the newest lot (the one a LIFO sale retires first).
+    priced = [l for l in lots if _f(l.buy_price) > 0]
     shares = sum(_f(l.shares) for l in lots)
-    invested = sum(_f(l.shares) * _f(l.buy_price) for l in lots)
-    min_buy = min(buy_prices) if buy_prices else 0.0
+    priced_shares = sum(_f(l.shares) for l in priced)
+    invested = sum(_f(l.shares) * _f(l.buy_price) for l in priced)
+    newest_bp = _f(lots[-1].buy_price) if lots else 0.0
 
     lot_rows = []
     prev_price = None
     for l in lots:
         bp = _f(l.buy_price)
         sh = _f(l.shares)
+        known = bp > 0   # a lot with no known cost gets no target / P/L (can't be honest)
         target = _lot_sell_target(l, cfg)
         lot_rows.append({
             "id": l.id,
@@ -576,12 +587,13 @@ async def build_position_detail(symbol: str, account_hash: str) -> dict | None:
             "buy_price": round(bp, 4),
             "amount": round(sh * bp, 2),
             "pct_down_from_prev": round(1 - bp / prev_price, 4) if prev_price else None,
-            "sell_target": round(target, 4),
+            "cost_unknown": not known,
+            "sell_target": round(target, 4) if known else None,
             "sell_mode": l.sell_mode or cfg.sell.default_mode,
-            "proj_profit": round((target - bp) * sh, 2),
+            "proj_profit": round((target - bp) * sh, 2) if known else None,
             # live P/L if this lot were sold right now
-            "pl_now": round((price - bp) * sh, 2) if has_price else None,
-            "next_buy_sug": round(rules.next_buy_price(bp, l.rung + 1, cfg, deployed), 4),
+            "pl_now": round((price - bp) * sh, 2) if has_price and known else None,
+            "next_buy_sug": round(rules.next_buy_price(bp, l.rung + 1, cfg, deployed), 4) if known else None,
         })
         prev_price = bp
 
@@ -619,8 +631,9 @@ async def build_position_detail(symbol: str, account_hash: str) -> dict | None:
         "positions": len(lots),
         "shares": round(shares, 4),
         "invested": round(invested, 2),
-        "basis_per_share": round(rules.basis_per_share(invested, shares), 4),
-        "lilo_pct": round(rules.lilo_pct(price, min_buy), 4) if has_price else None,
+        "basis_per_share": round(rules.basis_per_share(invested, priced_shares), 4) if priced_shares > 0 else 0.0,
+        "lilo_pct": round(rules.lilo_pct(price, newest_bp), 4) if has_price and newest_bp > 0 else None,
+        "cost_unknown": len(priced) < len(lots),
         # Avg/median reference levels for the chart overlay (None until warmed). 13wk for
         # leveraged/inverse ETFs (decay makes a year stale), else 52wk — ref_window_weeks says which.
         "avg_52wk": ref_avg,
@@ -629,11 +642,11 @@ async def build_position_detail(symbol: str, account_hash: str) -> dict | None:
         # P/L split: unrealized = mark-to-market on open lots; realized = booked round-trips;
         # dividends = income received for this name. total_return sums all three (a single
         # name — no double count: price P/L and cash dividends are distinct).
-        "unrealized": round(shares * price - invested, 2) if has_price else None,
+        "unrealized": round(priced_shares * price - invested, 2) if has_price else None,
         "realized": round(_f(realized), 2),
         "last_sold": round(_f(last_sold_val), 4) if last_sold_val else None,
         "dividends": sym_dividends,
-        "total_return": round(_f(realized) + sym_dividends + (shares * price - invested if has_price else 0.0), 2),
+        "total_return": round(_f(realized) + sym_dividends + (priced_shares * price - invested if has_price else 0.0), 2),
         "underlying": etf_underlying, "is_leveraged": etf_is_lev,
         "rules_override": sym_override,   # per-ticker override (None = global rules)
         "lots": lot_rows,

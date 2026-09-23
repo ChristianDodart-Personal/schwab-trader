@@ -91,7 +91,6 @@ async def get_strategy() -> dict:
         "ladder_drops": [d.__dict__ for d in strategy.ladder_drops],
         "sell": strategy.sell.__dict__,
         "guardrails": strategy.guardrails,
-        "universe": strategy.universe,
     }
 
 
@@ -105,9 +104,6 @@ class PhoneNotifyBody(BaseModel):
     smtp_from: str | None = None
     smtp_to: str | None = None
     smtp_tls: bool | None = None
-    cat_alerts: bool | None = None
-    cat_triggers: bool | None = None
-    cat_fills: bool | None = None
 
 
 @router.get("/api/phone-notify")

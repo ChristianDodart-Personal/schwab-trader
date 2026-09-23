@@ -51,8 +51,10 @@ class DeploymentScaling:
     def from_mapping(cls, data: dict | None) -> "DeploymentScaling":
         data = data or {}
         tiers = sorted(
+            # Clamped to >= 1.0: scaling only ever demands DEEPER dips when deployed,
+            # never shallower ones (the Rules tab promises this; the engine enforces it).
             (DeploymentTier(min_deployed_pct=float(t["min_deployed_pct"]),
-                            drop_multiplier=float(t["drop_multiplier"]))
+                            drop_multiplier=max(1.0, float(t["drop_multiplier"])))
              for t in data.get("tiers", [])),
             key=lambda t: t.min_deployed_pct, reverse=True,
         )
@@ -67,7 +69,6 @@ class StrategyConfig:
     sell: SellConfig
     deployment_scaling: DeploymentScaling
     guardrails: dict
-    universe: dict
 
     @classmethod
     def from_mapping(cls, data: dict) -> "StrategyConfig":
@@ -92,8 +93,7 @@ class StrategyConfig:
                 pct_above=float(sell["pct_above"]),
             ),
             deployment_scaling=DeploymentScaling.from_mapping(data.get("deployment_scaling")),
-            guardrails=dict(data["guardrails"]),
-            universe=dict(data["universe"]),
+            guardrails=dict(data.get("guardrails") or {}),
         )
 
     @classmethod
@@ -119,5 +119,4 @@ class StrategyConfig:
                           for t in self.deployment_scaling.tiers],
             },
             "guardrails": dict(self.guardrails),
-            "universe": dict(self.universe),
         }

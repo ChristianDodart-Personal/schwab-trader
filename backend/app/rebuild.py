@@ -151,7 +151,7 @@ async def _write(account_hash: str, fills, positions=None) -> dict:
                         f"{sp.symbol} {label} detected: {sp.price:g} → {sp.shares:g} shares. Lots "
                         f"rescaled, cost basis preserved. If a Schwab CSV later records the split, "
                         f"the import supersedes this.",
-                        category="system", account_hash=account_hash)
+                        category="notice", account_hash=account_hash)
             except Exception as e:
                 log.warning(f"{account_hash[-4:]}: split notification failed: {e!r}")
         # Positions are the authoritative CURRENT holdings — reconcile to them

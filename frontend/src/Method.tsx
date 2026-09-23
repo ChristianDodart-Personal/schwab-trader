@@ -10,14 +10,14 @@ import { IconWarning } from "./Icon";
 // names that have fallen past the plan, and whether the fixed $ tiers fit your edge).
 // ============================================================================
 
-type ConcRow = { key: string; symbols: string[]; value: number; pct: number; over_cap: boolean; hidden: boolean };
+type ConcRow = { key: string; symbols: string[]; value: number; pct: number };
 type Scenario = { drop: number; value: number; unrealized: number };
 type StressPos = { symbol: string; lots_deep: number; over_depth: boolean; invested: number; value_now: number; unrealized_now: number; scenarios: Scenario[] };
 type Break = { symbol: string; lots_deep: number; reasons: { code: string; text: string; value: number }[] };
 type Kelly = { enough: boolean; trades: number; min_trades?: number; win_rate?: number; payoff_ratio?: number; kelly_fraction?: number; half_kelly_fraction?: number; kelly_dollars?: number; half_kelly_dollars?: number; current_tiers?: number[]; account_value?: number };
 type Analysis = {
   as_of: string; held_count: number;
-  concentration: { cap: number; rows: ConcRow[] };
+  concentration: { rows: ConcRow[] };
   stress: { drops: number[]; positions: StressPos[]; portfolio: { invested: number; value_now: number; scenarios: Scenario[] } };
   thesis_breaks: Break[];
   kelly: Kelly;
@@ -161,9 +161,6 @@ export function Method({ initialBacktest }: { initialBacktest?: string | null } 
       </div>
     );
 
-  const cap = a.concentration.cap;
-  const capDollars = a.kelly.enough ? (a.kelly.account_value ?? 0) * cap : null;
-
   return (
     <div className="card-grid">
       <p style={{ color: "var(--text-dim)", fontSize: "var(--fs-sm)", margin: 0, gridColumn: "1 / -1" }}>
@@ -176,8 +173,7 @@ export function Method({ initialBacktest }: { initialBacktest?: string | null } 
         <h3 style={S.h}>Concentration by underlying</h3>
         <p style={S.sub}>
           A stock and any leveraged/inverse ETFs tied to it are one bet. Rolled up, here's your true
-          single-name exposure vs the {pct(cap)} cap. A “hidden” flag means the combined position breaches
-          the cap even though no single ticker does.
+          single-name exposure as a share of your book's market value.
         </p>
         <table style={S.table}>
           <thead><tr>
@@ -190,10 +186,7 @@ export function Method({ initialBacktest }: { initialBacktest?: string | null } 
                 <td style={S.tdL}><b>{r.key}</b></td>
                 <td style={S.tdL}>{r.symbols.join(", ")}</td>
                 <td style={S.td}>{usd(r.value)}</td>
-                <td style={{ ...S.td, ...(r.over_cap ? { color: "var(--warn)", fontWeight: 700 } : {}) }}>
-                  {pct(r.pct)}
-                  {r.over_cap && <span style={S.badge}>{r.hidden ? "hidden — over cap combined" : "over cap"}</span>}
-                </td>
+                <td style={S.td}>{pct(r.pct)}</td>
               </tr>
             ))}
           </tbody>
@@ -279,16 +272,13 @@ export function Method({ initialBacktest }: { initialBacktest?: string | null } 
                 <tr><td style={S.tdL}>Payoff (avg win ÷ avg loss)</td><td style={S.td}>{a.kelly.payoff_ratio}×</td></tr>
                 <tr><td style={S.tdL}>Kelly / half-Kelly per name</td><td style={S.td}>{pct(a.kelly.kelly_fraction!)} / {pct(a.kelly.half_kelly_fraction!)}</td></tr>
                 <tr><td style={S.tdL}>Half-Kelly dollars per name</td><td style={S.td}><b>{usd(a.kelly.half_kelly_dollars!)}</b></td></tr>
-                <tr><td style={S.tdL}>Your single-name cap ({pct(cap)} of book)</td><td style={S.td}>{capDollars != null ? usd(capDollars) : "—"}</td></tr>
                 <tr><td style={S.tdL}>Your sizing tiers (per lot)</td><td style={S.td}>{(a.kelly.current_tiers ?? []).map((t) => usd(t)).join(" / ")}</td></tr>
               </tbody>
             </table>
             <p style={S.note}>
               {a.kelly.kelly_fraction === 0
                 ? "Your realized record shows no positive edge yet, so Kelly implies minimal sizing — treat current sizes as speculative until the record turns."
-                : capDollars != null && a.kelly.half_kelly_dollars! < capDollars
-                  ? "Your 5% cap lets a fully-laddered name exceed what half-Kelly would risk — the ladder can commit more per name than your edge supports. Worth knowing."
-                  : "Your cap sits within half-Kelly — sizing looks conservative relative to your realized edge."}
+                : "Compare half-Kelly to what a fully-laddered name commits under your sizing tiers: if a full ladder is well above it, the method can put more into one name than your realized edge supports."}
               {" "}Book value used as the base: {usd(a.kelly.account_value ?? 0)}.
             </p>
           </>

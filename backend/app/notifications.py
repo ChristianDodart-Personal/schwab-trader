@@ -114,10 +114,17 @@ async def set_notif_prefs(patch: dict, account_hash: str | None = None) -> dict:
 
 def _gate(prefs: dict, category: str, symbol: str | None) -> dict:
     """Resolve one notification's delivery: whether it lands read (no badge), and
-    whether desktop/phone copies go out. 'system' always fully delivers."""
+    whether desktop/phone copies go out.
+      - "system"  Schwab reconnect reminders: ALWAYS delivered, even when muted (the app
+                  silently stops working without them).
+      - "notice"  app notices (e.g. a detected stock split): delivered everywhere but
+                  honor Mute all and muted tickers; no per-category row in the grid.
+      - alert | trigger | fill: the per-category, per-channel grid."""
     if category == "system":
         return {"read": False, "desktop": True, "phone": True, "sound": False}
     active = (not prefs.get("muted")) and ((symbol or "").upper() not in set(prefs.get("muted_symbols", [])))
+    if category == "notice":
+        return {"read": not active, "desktop": active, "phone": active, "sound": False}
     cat = (prefs.get("categories") or {}).get(category, {})
     bell = cat.get("bell", True)
     return {

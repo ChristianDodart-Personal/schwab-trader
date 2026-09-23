@@ -71,15 +71,12 @@ def check(cfg: dict) -> list[dict]:
         for t in dtiers:
             pct = _num(t.get("min_deployed_pct"))
             mult = _num(t.get("drop_multiplier"))
-            if pct is not None and (pct < 0 or pct > 100):
-                out.append({"level": "warn", "message": f"Deployment tier at {pct:g}% is outside 0–100% — deployment can't exceed 100%."})
+            # Deployed % = market value ÷ your own equity: 100% = fully invested with your
+            # own money, above 100% = on margin. So tiers above 100 are valid (margin tiers);
+            # only a negative threshold is meaningless.
+            if pct is not None and pct < 0:
+                out.append({"level": "warn", "message": f"Deployment tier at {pct:g}% is negative — deployment can't be below 0%."})
             if mult is not None and mult < 1:
-                out.append({"level": "warn", "message": f"Deployment multiplier {mult:g}× is below 1 — it would require SHALLOWER dips when heavily invested (the opposite of the intended guardrail)."})
-
-    # --- universe cap band ---
-    uni = cfg.get("universe") or {}
-    lo, hi = _num(uni.get("market_cap_min")), _num(uni.get("market_cap_max"))
-    if lo is not None and hi is not None and lo >= hi:
-        out.append({"level": "warn", "message": f"Market-cap minimum (${lo/1e9:g}B) is not below the maximum (${hi/1e9:g}B) — no company can match the band."})
+                out.append({"level": "warn", "message": f"Deployment multiplier {mult:g}× is below 1 — it's treated as 1.0× (scaling only ever requires deeper dips, never shallower)."})
 
     return out

@@ -114,9 +114,9 @@ async def run_snapshot_scheduler() -> None:
     seen_open_day = None  # the trading day we last observed the market live-open
     while True:
         try:
-            from .. import screener as screener_svc
+            from .. import market_hours as market_hours_svc
 
-            hours = await screener_svc.market_hours()
+            hours = await market_hours_svc.market_hours()
             session = hours.get("session")
             now = datetime.now(MARKET_TZ)
             today = _today()

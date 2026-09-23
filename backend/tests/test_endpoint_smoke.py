@@ -100,11 +100,14 @@ def test_symbol_rules_round_trip(client):
 def test_bulk_plans_read_only(client):
     # No positions/quotes for the smoke account → empty plans, but the read-only
     # endpoints must answer 200 with the expected shape (never place anything).
-    for kind in ("sell", "buy", "exit"):
+    for kind in ("sell", "buy"):
         r = client.get(f"/api/bulk/{kind}-plan")
         assert r.status_code == 200
         j = r.json()
-        assert isinstance(j.get("items", j.get("rows", [])), list)
+        assert isinstance(j.get("candidates"), list)
+    # The dormant "get me out" exit path and the auto-select prefs were removed.
+    assert client.get("/api/bulk/exit-plan").status_code == 404
+    assert client.get("/api/bulk/prefs").status_code == 404
 
 
 def test_strategy_analysis_shape(client):

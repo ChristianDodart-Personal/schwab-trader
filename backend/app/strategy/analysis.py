@@ -20,14 +20,14 @@ from .config import StrategyConfig
 
 
 # --- 1) Concentration by true underlying -------------------------------------
-def concentration_by_underlying(positions: list[dict], cap: float) -> list[dict]:
+def concentration_by_underlying(positions: list[dict]) -> list[dict]:
     """Roll each position up to its underlying — a stock and any leveraged/inverse
-    ETFs tied to it are ONE exposure — and flag breaches of the single-name cap.
+    ETFs tied to it are ONE exposure — so the true single-name weight is visible.
+    Informational: there is no cap (removed 2026-09; it only mattered for very large
+    accounts).
 
     positions: [{symbol, underlying (str|None), value (float)}]; value = market value.
-    Returns rows sorted by exposure desc: {key, symbols, value, pct, over_cap, hidden}.
-    `hidden` marks a group that breaches the cap only when COMBINED (no single member
-    does) — the concentration a per-ticker 5% check silently misses.
+    Returns rows sorted by exposure desc: {key, symbols, value, pct}.
     """
     groups: dict[str, dict] = {}
     for p in positions:
@@ -35,22 +35,18 @@ def concentration_by_underlying(positions: list[dict], cap: float) -> list[dict]
         if val <= 0:
             continue
         key = (p.get("underlying") or p["symbol"]).upper()
-        g = groups.setdefault(key, {"key": key, "symbols": [], "value": 0.0, "member_max": 0.0})
+        g = groups.setdefault(key, {"key": key, "symbols": [], "value": 0.0})
         g["symbols"].append(p["symbol"].upper())
         g["value"] += val
-        g["member_max"] = max(g["member_max"], val)
     total = sum(g["value"] for g in groups.values())
     out = []
     for g in groups.values():
         pct = g["value"] / total if total else 0.0
-        member_pct = g["member_max"] / total if total else 0.0
         out.append({
             "key": g["key"],
             "symbols": sorted(set(g["symbols"])),
             "value": round(g["value"], 2),
             "pct": round(pct, 4),
-            "over_cap": pct > cap,
-            "hidden": pct > cap and member_pct <= cap,
         })
     out.sort(key=lambda r: r["pct"], reverse=True)
     return out

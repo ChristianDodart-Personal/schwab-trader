@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { CONCENTRATION_CAP, dayPct, isOverConcentrationCap, lastPosGainPct } from "./rowDerived";
+import { dayPct, lastPosGainPct } from "./rowDerived";
 import type { DashboardRow } from "./types";
 
 // Only the fields each derivation reads matter; cast a partial row for the test.
@@ -29,16 +29,5 @@ describe("dayPct", () => {
   it("null when the start-of-day value isn't positive", () => {
     expect(dayPct(10, 10)).toBeNull(); // start 0
     expect(dayPct(20, 10)).toBeNull(); // start -10
-  });
-});
-
-describe("isOverConcentrationCap", () => {
-  it("true at or over the cap", () => {
-    expect(isOverConcentrationCap(row({ portfolio_pct: CONCENTRATION_CAP }))).toBe(true);
-    expect(isOverConcentrationCap(row({ portfolio_pct: 0.08 }))).toBe(true);
-  });
-  it("false under the cap or when unknown", () => {
-    expect(isOverConcentrationCap(row({ portfolio_pct: 0.02 }))).toBe(false);
-    expect(isOverConcentrationCap(row({ portfolio_pct: null }))).toBe(false);
   });
 });

@@ -3,7 +3,6 @@ import { usd, pct } from "./format";
 import type { DashboardRow, Lot } from "./types";
 import { matchesRule, type SignalRule } from "./signals";
 import { moneyColor } from "./LedgerUI";
-import { CONCENTRATION_CAP, isOverConcentrationCap } from "./rowDerived";
 
 import { API } from "./api";
 import { IconWarning } from "./Icon";
@@ -114,18 +113,10 @@ const RangeBar = ({ r }: { r: DashboardRow }) => {
   );
 };
 
-// RULE 10 from the sheet: keep every stock under 5% of the portfolio. Flag any
-// held position at/over this so over-concentration is visible at a glance.
-const PortfolioPct = ({ r }: { r: DashboardRow }) => {
-  if (r.portfolio_pct == null) return <Dash />;
-  const over = isOverConcentrationCap(r);
-  return (
-    <span style={over ? { color: "var(--warn)", fontWeight: 600 } : undefined}
-      title={over ? `Over the ${(CONCENTRATION_CAP * 100).toFixed(0)}% single-stock cap` : undefined}>
-      {pct(r.portfolio_pct)}{over ? <> <IconWarning size={12} /></> : ""}
-    </span>
-  );
-};
+// This position's share of your invested cost (cash excluded). Informational only:
+// the old 5% single-stock cap was removed (it only mattered for very large accounts).
+const PortfolioPct = ({ r }: { r: DashboardRow }) =>
+  r.portfolio_pct == null ? <Dash /> : <span>{pct(r.portfolio_pct)}</span>;
 // BUY/SELL signal chip — the ▲/▼ glyph keeps it separable in grayscale.
 const Chip = ({ children, kind }: { children: React.ReactNode; kind: "buy" | "sell" }) => (
   <span className={`chip chip-${kind}`} style={{ marginLeft: 4 }}>
@@ -134,7 +125,7 @@ const Chip = ({ children, kind }: { children: React.ReactNode; kind: "buy" | "se
 );
 
 // Ticker color by risk band (blue = safer → red = riskier). Neutral (undefined) for
-// medium/unknown so the symbol reads normally. Shared by the dashboard, detail, screener.
+// medium/unknown so the symbol reads normally. Shared by the dashboard and the detail view.
 export function tickerRiskColor(risk: string | null | undefined): string | undefined {
   switch (risk) {
     case "low": return "var(--accent-quiet)"; // muted blue — safer (broad ETF / large cap)
@@ -161,9 +152,15 @@ const CustomChip = ({ rule }: { rule: SignalRule }) => (
 export function rowSignalChips(r: DashboardRow, rules: SignalRule[] = []): React.ReactNode {
   if (r.is_watch) return null;
   const matched = rules.filter((rule) => matchesRule(rule, r));
-  if (!r.buy_mark && !r.sell_mark && matched.length === 0) return null;
+  if (!r.buy_mark && !r.sell_mark && matched.length === 0 && !r.cost_unknown) return null;
   return (
     <>
+      {r.cost_unknown && (
+        <span className="chip" style={{ marginLeft: 4, color: "var(--warn)", border: "1px solid var(--warn-border)", background: "var(--warn-bg)" }}
+          title="Part of this position has no known cost (usually a backfilled lot Schwab gave no average for). Those shares are left out of cost, P/L and signals. Import a Schwab transactions CSV covering the buy, or review it by hand.">
+          <IconWarning size={11} /> review
+        </span>
+      )}
       {r.buy_mark && <Chip kind="buy">BUY</Chip>}
       {r.sell_mark && <Chip kind="sell">SELL</Chip>}
       {matched.map((rule) => <CustomChip key={rule.id} rule={rule} />)}
@@ -207,13 +204,13 @@ export const DASH_COLUMN_LIST: DashCol[] = [
   // and high as endpoints, a median tick, and a price dot. Combines pct_of_high/low +
   // median into one scannable visual.
   { id: "range", label: "52-week range", align: "left", term: "52wk_low_pct", render: (r) => <RangeBar r={r} /> },
-  { id: "lilo_pct", label: "LILO %", align: "right", watchNA: true, render: (r) => <Colored v={pct(r.lilo_pct)} n={r.lilo_pct} /> },
+  { id: "lilo_pct", label: "LILO %", align: "right", term: "lilo_pct", watchNA: true, render: (r) => <Colored v={pct(r.lilo_pct)} n={r.lilo_pct} /> },
   { id: "last_pos_cost", label: "Last Pos Cost", align: "right", term: "cost_basis", watchNA: true, render: (r) => usd(r.last_pos_cost) },
   { id: "invested", label: "Invested", align: "right", term: "invested", watchNA: true, render: (r) => usd(r.invested) },
   { id: "year_profit", label: "Profit (YTD)", align: "right", term: "realized_pl", watchNA: true, render: (r) => <Colored v={usd(r.year_profit)} n={r.year_profit} /> },
-  { id: "avg_monthly", label: "Avg Monthly", align: "right", watchNA: true, render: (r) => <Colored v={usd(r.avg_monthly)} n={r.avg_monthly} /> },
+  { id: "avg_monthly", label: "Avg Monthly", align: "right", term: "avg_monthly", watchNA: true, render: (r) => <Colored v={usd(r.avg_monthly)} n={r.avg_monthly} /> },
   { id: "year_trades", label: "Trades (YTD)", align: "right", watchNA: true, render: (r) => num(r.year_trades) },
-  { id: "portfolio_pct", label: "Portfolio %", align: "right", watchNA: true, render: (r) => <PortfolioPct r={r} /> },
+  { id: "portfolio_pct", label: "Portfolio %", align: "right", term: "portfolio_pct", watchNA: true, render: (r) => <PortfolioPct r={r} /> },
   { id: "sector", label: "Sector", align: "left", prov: "text", render: (r) => r.sector ? <span style={{ color: "var(--text-muted)" }}>{r.sector}</span> : <Dash /> },
   { id: "market_cap", label: "Market Cap", align: "right", render: (r) => <span style={{ color: "var(--text-muted)" }}>{capFmt(r.market_cap)}</span> },
   // additional available columns (not in the default layout)
@@ -221,7 +218,7 @@ export const DASH_COLUMN_LIST: DashCol[] = [
   { id: "shares", label: "Shares", align: "right", prov: "schwab", watchNA: true, render: (r) => num(r.shares) },
   { id: "current_value", label: "Market Value", align: "right", term: "market_value", watchNA: true, render: (r) => usd(r.current_value) },
   { id: "unrealized", label: "Unrealized P/L", align: "right", term: "unrealized_pl", watchNA: true, render: (r) => <Colored v={usd(r.unrealized)} n={r.unrealized} /> },
-  { id: "day_change", label: "Day P/L", align: "right", prov: "schwab", term: "day_change", watchNA: true, render: (r) => <Colored v={usd(r.day_change)} n={r.day_change} /> },
+  { id: "day_change", label: "Day P/L", align: "right", prov: "schwab", term: "position_day_change", watchNA: true, render: (r) => <Colored v={usd(r.day_change)} n={r.day_change} /> },
   { id: "basis_per_share", label: "Basis / Share", align: "right", term: "cost_basis", watchNA: true, render: (r) => usd(r.basis_per_share) },
   { id: "log_profit", label: "Profit (all-time)", align: "right", term: "realized_pl", watchNA: true, render: (r) => <Colored v={usd(r.log_profit)} n={r.log_profit} /> },
   { id: "dividends", label: "Dividends", align: "right", watchNA: true, render: (r) => (r.dividends ? <span style={{ color: "var(--pos)" }}>{usd(r.dividends)}</span> : <Dash />) },
@@ -258,7 +255,7 @@ export const SIMPLE_DASH_COLS = ["price", "unrealized", "current_value"];
 // ---- ticker drill-down columns (operate on a lot) ----
 export const DETAIL_COLUMN_LIST: DetailCol[] = [
   { id: "buy_date", label: "Buy Date", align: "left", prov: "text", render: (l) => l.buy_date ?? "—" },
-  { id: "age_days", label: "Age", align: "right", term: "hold_days", render: (l) => (l.age_days == null ? "—" : `${l.age_days}d`) },
+  { id: "age_days", label: "Age", align: "right", term: "lot_age", render: (l) => (l.age_days == null ? "—" : `${l.age_days}d`) },
   { id: "shares", label: "Shares", align: "right", render: (l) => num(l.shares) },
   { id: "buy_price", label: "Buy", align: "right", render: (l) => usd(l.buy_price) },
   { id: "amount", label: "Amount", align: "right", render: (l) => usd(l.amount) },

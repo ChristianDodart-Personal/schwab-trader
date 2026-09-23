@@ -5,9 +5,6 @@ import type { DashboardRow } from "./types";
 // rules all read the same math instead of each re-deriving it (and drifting). Money-COLOR
 // stays in moneyColor (LedgerUI); this module is the value math.
 
-// RULE 10 from the sheet: keep every stock under 5% of the portfolio.
-export const CONCENTRATION_CAP = 0.05;
-
 // Gain on the last position as a percent of its cost basis. Null unless there's a profit
 // figure AND a positive cost (a zero/negative cost can't yield a meaningful percent). This
 // is the canonical guard — it also drives the sell-side signal metric, so it stays strict.
@@ -24,9 +21,4 @@ export function dayPct(change: number | null | undefined, value: number | null |
   if (change == null || value == null) return null;
   const start = value - change;
   return start > 0 ? change / start : null;
-}
-
-// A held position at or over the single-stock concentration cap (RULE 10).
-export function isOverConcentrationCap(r: DashboardRow): boolean {
-  return r.portfolio_pct != null && r.portfolio_pct >= CONCENTRATION_CAP;
 }

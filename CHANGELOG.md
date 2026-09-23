@@ -3,6 +3,33 @@
 Patch notes for each release. The newest version's section is pulled into the GitHub
 release automatically and shown inside the app when an update is ready to install.
 
+## v0.99.0 — "What you see is what gets sold"
+
+- **Sell only where a sale actually happens.** Sales always come off your newest position
+  first (LIFO). The drill-down used to offer a Sell button on every position, and a ticket
+  opened from an older one showed that position's shares, target and profit, none of which
+  is what gets booked. Now only the newest position has a Sell button; to sell deeper, use
+  "Sell shares".
+- **The SELL signal and LILO % follow your newest position.** SELL now lights only when the
+  newest position clears its own target, so it can't point you at a sale that books a loss.
+  LILO % now measures how far the price is from your newest position's buy price.
+- **Positions with an unknown cost get flagged, not guessed.** If part of a position has no
+  known cost (usually an old holding Schwab gave no average for), those shares no longer
+  show up as profit. The ticker gets a yellow "review" marker and the drill-down explains it.
+- **Bulk orders behave like the single order ticket.** Outside regular hours a bulk limit is
+  now an extended-hours order, and the review says which session it goes out in. A bulk
+  sell limit more than 25% from the market is refused, like bulk buys already were, and a
+  row below cost says so before you confirm.
+- **Removed, because they didn't do what they said:** the single-stock % cap and its
+  warnings, the cash reserve setting, the universe rules (market-cap band, excluded
+  sectors), and the unused bulk auto-select settings. The Rules tab's deployment
+  description now matches the math: 100% means fully invested with your own money, above
+  100% means margin.
+- **Clearer labels and definitions.** The share-count sell ticket calls its price "Last",
+  not "Target". Harvestable, Sell target and Buy dip definitions now describe the real
+  calculation, and LILO %, Age, Avg Monthly, Portfolio % and per-position Day P/L have
+  definitions. "Mute all" now silences everything except Schwab reconnect reminders.
+
 ## v0.98.0 — "The split, this time for real"
 
 - **Fixed: the v0.97 split detection could refuse a genuine split.** It expected Schwab's

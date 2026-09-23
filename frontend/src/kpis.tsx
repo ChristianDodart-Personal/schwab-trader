@@ -33,7 +33,7 @@ export const KPI_CATALOG: KpiDef[] = [
     hint: "Change in total account value since yesterday's close — matches Schwab's 'Total day change'. Includes trading and any deposits/withdrawals (so moving cash in shows here too).",
     num: (d) => d.total_day_change },
   { id: "harvestable", term: "harvestable", label: "Harvestable", tone: "positive",
-    hint: "Profit you could lock in right now by selling every profitable last position — equals what the 'Sell profitable' bulk action would realize.",
+    hint: "Profit you could lock in right now by selling every last position that's in the green. Bulk Sell sells whole shares and needs a live Schwab quote, so what it books can be slightly less.",
     num: (d) => d.harvestable },
   { id: "market_value", term: "market_value", label: "Market value", tone: "plain",
     hint: "Current market value of every open position.",

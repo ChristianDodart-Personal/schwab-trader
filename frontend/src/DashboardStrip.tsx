@@ -1,6 +1,6 @@
 import { usd, pct } from "./format";
 import { moneyColor } from "./LedgerUI";
-import { CONCENTRATION_CAP, dayPct, isOverConcentrationCap } from "./rowDerived";
+import { dayPct } from "./rowDerived";
 import type { Dashboard, DashboardRow } from "./types";
 
 // Bottom "at a glance" strip beneath the dashboard table: three cards, each a RANKING or
@@ -36,13 +36,11 @@ export function DashboardStrip({ data }: { data: Dashboard }) {
   }
   const showWorst = worst && best && worst.symbol !== best.symbol;
 
-  // --- Card 2: concentration (largest position % + cap breaches) ---
+  // --- Card 2: concentration (largest position by cost; informational, no cap) ---
   const withPct = held.filter((r) => r.portfolio_pct != null);
   const largest = withPct.length
     ? withPct.reduce((m, r) => ((r.portfolio_pct as number) > (m.portfolio_pct as number) ? r : m))
     : null;
-  const overCap = withPct.filter(isOverConcentrationCap);
-  const capPctLabel = `${Math.round(CONCENTRATION_CAP * 100)}%`;
 
   // --- Card 3: open positions (how many are green right now + total open P/L) ---
   const withPL = held.filter((r) => r.unrealized != null);
@@ -73,12 +71,10 @@ export function DashboardStrip({ data }: { data: Dashboard }) {
         {largest ? (
           <>
             <div style={S.big}>
-              {largest.symbol} <span style={S.bigTail}>{pct(largest.portfolio_pct as number)} of portfolio</span>
+              {largest.symbol} <span style={S.bigTail}>{pct(largest.portfolio_pct as number)} of invested</span>
             </div>
-            <div style={{ ...S.sub, color: overCap.length ? "var(--warn)" : "var(--text-dim)" }}>
-              {overCap.length
-                ? `${overCap.length} over the ${capPctLabel} cap: ${overCap.map((r) => r.symbol).join(", ")}`
-                : `All within the ${capPctLabel} single-stock cap`}
+            <div style={{ ...S.sub, color: "var(--text-dim)" }}>
+              Your largest position by cost, across {withPct.length} holding{withPct.length === 1 ? "" : "s"}
             </div>
           </>
         ) : (

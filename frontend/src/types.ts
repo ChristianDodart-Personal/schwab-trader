@@ -25,6 +25,7 @@ export type DashboardRow = {
   buy_mark: boolean;
   sell_mark: boolean;
   last_pos_cost: number | null;
+  cost_unknown?: boolean;   // some lot has no known cost: kept out of cost/P/L, flagged for review
   last_pos_profit: number | null;
   log_profit: number;
   trades: number;
@@ -54,7 +55,7 @@ export type SymbolRuleOverride = {
 export type Dashboard = {
   mode: string;
   total_invested: number;
-  harvestable?: number | null; // profit lockable now = sum of positive Last Pos P/L (= what "Sell profitable" realizes)
+  harvestable?: number | null; // profit lockable now = sum of positive Last Pos P/L (rows with a known last-lot cost)
   total_day_change?: number | null;  // today's P/L on held shares (null until every held row is priced)
   total_value?: number | null;       // held market value
   total_unrealized?: number | null;  // held market value − cost basis
@@ -81,7 +82,7 @@ export type MarginSummary = {
   maintenance_requirement?: number | null;
   maint_cushion?: number | null;      // equity above the maintenance floor
   maint_cushion_pct?: number | null;
-  deployed_pct?: number | null;       // % of capacity in the market
+  deployed_pct?: number | null;       // long market value ÷ own equity × 100 (>100 = margin)
   leverage?: number | null;           // long exposure ÷ equity
 };
 
@@ -181,7 +182,7 @@ export type LedgerProjection = {
   tax: LedgerTax; other_annual_income: number; filing: string;
 };
 
-// --- bulk actions (harvest profitable last positions / buy triggered dips) ---
+// --- bulk actions (sell picked holdings' last positions / buy) ---
 export type SellCandidate = {
   symbol: string;
   lot_id: number;
@@ -194,8 +195,7 @@ export type SellCandidate = {
   est_proceeds: number;
   est_profit: number;
   gain_pct: number;
-  qualifies: boolean;      // meets the auto-select threshold (pre-checked)
-  note?: string | null;
+  note?: string | null;     // e.g. below cost at the current price
 };
 export type BuyCandidate = {
   symbol: string;
@@ -206,21 +206,8 @@ export type BuyCandidate = {
   order_type: string;
   limit_price: number;
   est_cost: number;
-  qualifies: boolean;      // dipped enough to auto-select (held only)
   note?: string | null;
 };
-export type ExitCandidate = {
-  symbol: string;
-  shares: number;
-  last_price: number;
-  price: number | null;
-  order_type: string;
-  limit_price: number;
-  est_proceeds: number;
-  qualifies: boolean;
-  note?: string | null;
-};
-export type BulkPrefs = { sell_min_gain_pct: number; buy_dip_pct: number; exit_offset_pct: number };
 export type BulkPlan<T> = { ok: boolean; mode: string; count: number; candidates: T[] };
 export type BulkResult = {
   ok: boolean;
@@ -245,6 +232,9 @@ export type Suggestion = {
   error?: string;
   buying_power?: number | null; // advisory: available buying power (BUY only)
   affordable?: boolean | null;
+  // What limit_price IS. Default = the strategy's target/trigger. "Last" = just the last
+  // traded price (the share-count LIFO sell), so the ticket must not call it a target.
+  price_label?: string;
 };
 
 export type Alert = {
@@ -401,11 +391,12 @@ export type Lot = {
   buy_price: number;
   amount: number;
   pct_down_from_prev: number | null;
-  sell_target: number;
+  sell_target: number | null;   // null when this lot's cost is unknown
   sell_mode: string;
-  proj_profit: number;
+  proj_profit: number | null;
   pl_now: number | null;
-  next_buy_sug: number;
+  next_buy_sug: number | null;
+  cost_unknown?: boolean;
 };
 
 export type ProjectedRung = {
@@ -425,6 +416,7 @@ export type PositionDetailData = {
   invested: number;
   basis_per_share: number;
   lilo_pct: number | null;
+  cost_unknown?: boolean;
   avg_52wk: number | null;
   median_52wk: number | null;
   unrealized: number | null;

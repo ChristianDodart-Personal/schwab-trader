@@ -24,7 +24,7 @@ _NAME_LEV = ("2X", "3X", "-1X", "LEVERAG", "INVERSE", "ULTRAPRO", "ULTRA ",
 def is_leveraged_etf(name: str | None, industry: str | None) -> bool:
     """True when the instrument looks like a leveraged/inverse (single-stock) ETF —
     the only kind we group. Broad index ETFs are intentionally NOT grouped."""
-    if industry and "leverag" in industry.lower():   # FMP: "Asset Management - Leveraged"
+    if industry and "leverag" in industry.lower():   # e.g. "Asset Management - Leveraged"
         return True
     up = (name or "").upper()
     if "ETF" in up and any(tok in up for tok in _NAME_LEV):

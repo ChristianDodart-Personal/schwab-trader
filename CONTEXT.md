@@ -91,6 +91,6 @@ top, so the two can't drift and every field the type promises is present on both
 and signal rules all read the same values instead of re-deriving (and drifting): *last
 position gain %* (`lastPosGainPct`, guarded on a positive cost — also the sell-signal
 metric), *today's % move* (`dayPct(change, value)` — change over start-of-day value, used at
-account and position level), and *over the concentration cap* (`isOverConcentrationCap`, the
-5% single-stock RULE 10). Money→color is the separate `moneyColor` (positive green, negative
+account and position level). (The 5% single-stock cap was removed 2026-09; Portfolio % is
+informational.) Money→color is the separate `moneyColor` (positive green, negative
 red, exactly zero neutral) — the one money-color function.
