@@ -212,6 +212,7 @@ from .api import analysis as analysis_api  # noqa: E402
 from .api import auth as auth_api  # noqa: E402
 from .api import config as config_api  # noqa: E402
 from .api import data as data_api  # noqa: E402
+from .api import explore as explore_api  # noqa: E402
 from .api import ledger as ledger_api  # noqa: E402
 from .api import market as market_api  # noqa: E402
 from .api import trading as trading_api  # noqa: E402
@@ -224,6 +225,7 @@ app.include_router(accounts_api.router)
 app.include_router(ledger_api.router)
 app.include_router(market_api.router)
 app.include_router(trading_api.router)
+app.include_router(explore_api.router)
 
 
 @app.websocket("/ws/notifications")

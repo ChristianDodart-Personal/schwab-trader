@@ -6,7 +6,7 @@ import { PS } from "./ui";
 // Classify a feed row for its scannable type glyph. Live pushes carry `kind`;
 // stored rows don't, so infer: an alert_id ⇒ a price alert; else read the message
 // (fills say bought/sold/filled; strategy triggers say dipped/target/trigger).
-function inferKind(n: Notification): "alert" | "trigger" | "fill" | "system" {
+function inferKind(n: Notification): string {
   if (n.kind) return n.kind;
   if (n.alert_id != null) return "alert";
   const m = (n.message || "").toLowerCase();
@@ -23,10 +23,13 @@ export const KIND_ICON: Record<string, { glyph: string; color: string; label: st
   trigger: { glyph: "▸", color: "var(--accent)", label: "Strategy trigger" },
   fill: { glyph: "✓", color: "var(--pos)", label: "Order fill" },
   system: { glyph: "i", color: "var(--text-dim)", label: "System" },
+  notice: { glyph: "※", color: "var(--warn)", label: "App notice" },
 };
+// A kind the UI doesn't know yet (a newer backend) must render, never throw.
+export const KIND_FALLBACK = { glyph: "•", color: "var(--text-dim)", label: "Other" };
 
 function KindIcon({ n }: { n: Notification }) {
-  const k = KIND_ICON[inferKind(n)];
+  const k = KIND_ICON[inferKind(n)] ?? KIND_FALLBACK;
   return (
     <span title={k.label} aria-label={k.label}
       style={{ display: "inline-flex", alignItems: "center", justifyContent: "center",

@@ -228,19 +228,29 @@ def split_factor(recon_shares: float, actual_shares: float,
         k/1.5 … k×1.5. RCAX 1:5: our LIFO avg $3.39 vs Schwab $15.10 → ratio 4.45,
         √5 = 2.24, band 3.33…7.5 → split. A partial sale leaves Schwab's average where
         it was, ratio ≈ 1 (±20%), never above √k for any k ≥ 2 → not a split.
-    k is searched 2..100."""
+    k is searched 2..100.
+
+    Two guards keep a tiny holding from reading as a split (RKLB, 2026-09-24: 1 share in
+    fills, 1 at Schwab, Schwab's average 1.5× ours → "1:1 split" every resync):
+      - the share count must MOVE by at least one share in the split's direction;
+      - exactly one (k, direction) may fit. With a few shares the one-share tolerance
+        admits several k at once, and the cost band alone can't tell a split from a
+        sale plus a tax-lot gap, so an ambiguous match is refused."""
     if recon_shares <= _EPS or actual_shares <= _EPS or our_avg <= _EPS or schwab_avg <= _EPS:
         return None
 
     def cost_moved_by(k: int, ratio: float) -> bool:
         return ratio > k ** 0.5 and (k / 1.5) <= ratio <= (k * 1.5)
 
+    hits: list[tuple[int, str]] = []
     for k in range(2, 101):
-        if abs(actual_shares - recon_shares / k) < 1.0 and cost_moved_by(k, schwab_avg / our_avg):
-            return k, "reverse"
-        if abs(actual_shares - recon_shares * k) < 1.0 and cost_moved_by(k, our_avg / schwab_avg):
-            return k, "forward"
-    return None
+        if (actual_shares <= recon_shares - 1.0 and abs(actual_shares - recon_shares / k) < 1.0
+                and cost_moved_by(k, schwab_avg / our_avg)):
+            hits.append((k, "reverse"))
+        if (actual_shares >= recon_shares + 1.0 and abs(actual_shares - recon_shares * k) < 1.0
+                and cost_moved_by(k, our_avg / schwab_avg)):
+            hits.append((k, "forward"))
+    return hits[0] if len(hits) == 1 else None
 
 
 def infer_splits(open_by_symbol: dict[str, list[OpenLot]],

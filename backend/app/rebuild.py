@@ -134,8 +134,9 @@ async def _write(account_hash: str, fills, positions=None) -> dict:
                 log.warning(f"{account_hash[-4:]}: inferred split for {sp.symbol}: "
                             f"{held:g} sh in fills vs {sp.shares:g} sh at Schwab — rescaling lots, "
                             f"cost basis preserved (persisted as an inferred SPLT)")
+            new_splits: list[Fill] = []
             try:
-                await fill_store.upsert_inferred_splits(account_hash, splits)
+                new_splits = await fill_store.upsert_inferred_splits(account_hash, splits)
             except Exception as e:
                 log.warning(f"{account_hash[-4:]}: could not persist inferred split(s): {e!r}")
             fills = list(fills) + splits
@@ -143,7 +144,7 @@ async def _write(account_hash: str, fills, positions=None) -> dict:
             open_by_symbol, closed, oversold = result["open_lots"], result["closed"], result["oversold"]
             try:
                 from . import notifications as notifications_svc
-                for sp in splits:
+                for sp in new_splits:   # once per recorded event, not on every resync
                     r = sp.shares / sp.price if sp.price else 0.0
                     label = f"1:{round(1 / r):d} reverse split" if 0 < r < 1 else f"{round(r):d}:1 split"
                     await notifications_svc.post_system_notification(

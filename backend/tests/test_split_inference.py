@@ -53,6 +53,29 @@ def test_missing_schwab_average_never_infers():
     assert split_factor(729, 145, 3.39, 0.0) is None
 
 
+def test_unchanged_share_count_is_never_a_split():
+    # The live RKLB false positive: 1 share in fills, 1 at Schwab, Schwab's average 1.49×
+    # ours (tax-lot method). "1 ≈ 1/2 within a share" used to pass → "1:1 split" each resync.
+    assert split_factor(1, 1, 80.291, 119.80) is None
+    assert split_factor(40, 40, 50.0, 100.0) is None
+
+
+def test_ambiguous_small_holding_is_refused():
+    # 3 → 1 share fits k=2, 3 and 4 within the one-share tolerance, and a 2.9× cost ratio
+    # sits in more than one k's band: that's a sale plus a basis gap as easily as a split.
+    assert split_factor(3, 1, 10.0, 29.0) is None
+
+
+def test_small_but_unambiguous_split_still_detected():
+    # 10 → 5 with the average doubled: only k=2 fits the share count.
+    assert split_factor(10, 5, 10.0, 20.0) == (2, "reverse")
+
+
+def test_unchanged_holding_yields_no_splt():
+    lots = {"RKLB": _lots("RKLB", (1, 80.291))}
+    assert infer_splits(lots, {"RKLB": (1.0, 119.80)}, date(2026, 9, 24)) == []
+
+
 # ---------- infer_splits over a ladder ----------
 
 def test_infers_paired_splt_for_the_rcax_case():

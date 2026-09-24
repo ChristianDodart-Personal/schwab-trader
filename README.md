@@ -28,8 +28,6 @@ Ships as a Windows desktop app (Electron shell + bundled backend) that
   order path):
   - **Bulk Buy** — the next ladder position on dips, or fresh entries you select.
   - **Bulk Sell** — harvest each holding's profitable last position.
-  - **Bulk Exit** ("get me out") — a good-till-canceled limit sell of each full
-    position at its last-buy price.
 - **Position detail** — the buy ladder, projected positions, price chart with ladder
   and 52-week overlays, per-symbol realized/unrealized/dividend split, notes, and
   one-click price alerts.
@@ -39,6 +37,9 @@ Ships as a Windows desktop app (Electron shell + bundled backend) that
   *Predictive* (goal pacing, year-end projection, estimated progressive tax).
 - **Notifications** — price alerts, strategy triggers and fills to the in-app bell
   and desktop, with optional phone reach (ntfy / email) and per-category controls.
+- **Explore** (experimental) — run any read-only Schwab API call against the selected
+  account and see the raw payload plus a field inventory, with a note on what the app
+  uses each endpoint for. For planning features against real data.
 - **Multi-account / multi-profile**, automatic SQLite backups, and an in-app
   "what's new" viewer.
 

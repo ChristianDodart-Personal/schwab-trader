@@ -224,7 +224,7 @@ class Notification(Base):
     message: Mapped[str] = mapped_column(String(256))
     price: Mapped[float | None] = mapped_column(Numeric(14, 4))
     read: Mapped[bool] = mapped_column(default=False)
-    # Category for the per-type unread pills: alert | trigger | fill | system.
+    # Category for the per-type unread pills: alert | trigger | fill | system | notice.
     # NULL on legacy rows (pre-migration) — bucketed as "other" in the count.
     kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

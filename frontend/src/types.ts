@@ -257,7 +257,7 @@ export type Notification = {
   price: number | null;
   read: boolean;
   created_at: string | null;
-  kind?: "alert" | "trigger" | "fill" | "system"; // live-push only (not stored) — category
+  kind?: "alert" | "trigger" | "fill" | "system" | "notice" | (string & {}); // category; older rows may lack it
   desktop?: boolean; // live-push only: server's decision (from notif prefs) whether to pop a desktop notification
   sound?: boolean;   // live-push only: server's decision whether to play the in-app chime
 };

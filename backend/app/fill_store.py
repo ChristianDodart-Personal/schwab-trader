@@ -658,6 +658,30 @@ async def _rekey_cusip_split_rows(account_hash: str) -> int:
     return n
 
 
+async def _drop_noop_inferred_splits(account_hash: str) -> int:
+    """Heal: delete inferred SPLT rows whose new total equals the old one (a "1:1 split").
+    They rescale nothing, but they block a real split for the symbol within
+    ±_SPLIT_MATCH_DAYS. Written by the pre-v0.99.1 detector on a 1-share holding (RKLB,
+    2026-09-24), which also posted the same notice on every resync; those go too."""
+    from .db.models import Notification
+    async with SessionLocal() as s:
+        rows = (await s.execute(
+            select(FillRecord).where(FillRecord.account_hash == account_hash,
+                                     FillRecord.side == "SPLT", FillRecord.source == "inferred")
+        )).scalars().all()
+        noop = [r for r in rows if abs(float(r.shares or 0) - float(r.price or 0)) < 1.0]
+        for r in noop:
+            await s.delete(r)
+            await s.execute(delete(Notification).where(
+                Notification.kind == "notice", Notification.symbol == r.symbol,
+                Notification.message.like(f"{r.symbol} 1:1 split detected%")))
+            log.warning(f"{account_hash[-4:]}: removed a no-op inferred {r.symbol} split "
+                        f"({r.shares}/{r.price}, {r.trade_date}) and its notices")
+        if noop:
+            await s.commit()
+    return len(noop)
+
+
 async def _supersede_inferred_splits(s, account_hash: str) -> int:
     """Within an open session: delete source='inferred' SPLT rows whose symbol has a
     non-inferred SPLT within ±_SPLIT_MATCH_DAYS. Returns how many were removed."""
@@ -674,15 +698,16 @@ async def _supersede_inferred_splits(s, account_hash: str) -> int:
     return n
 
 
-async def upsert_inferred_splits(account_hash: str, splits: list[Fill]) -> int:
+async def upsert_inferred_splits(account_hash: str, splits: list[Fill]) -> list[Fill]:
     """Persist splits inferred from the positions snapshot (reconstruct.infer_splits) as
     PAIRED SPLT rows, source='inferred', so the LIFO projection keeps seeing them for
     every later sell. Idempotent: skipped if the exact key exists, or if ANY SPLT for the
     symbol already sits within ±_SPLIT_MATCH_DAYS (a CSV import may have recorded the
-    real event first). Returns the number inserted."""
+    real event first). A 1:1 "split" (shares == old total) is never written. Returns the
+    splits actually inserted, so the caller notifies once per real event, not per resync."""
     if not splits:
-        return 0
-    added = 0
+        return []
+    added: list[Fill] = []
     async with SessionLocal() as s:
         existing = (await s.execute(
             select(FillRecord.symbol, FillRecord.trade_date, FillRecord.fill_key)
@@ -690,6 +715,8 @@ async def upsert_inferred_splits(account_hash: str, splits: list[Fill]) -> int:
         )).all()
         keys = {k for _, _, k in existing}
         for sp in splits:
+            if abs(float(sp.shares) - float(sp.price)) < 1.0:
+                continue
             td = sp.at.date() if isinstance(sp.at, datetime) else sp.at
             key = f"inferred|{account_hash[:24]}|{sp.symbol}|{td.isoformat()}|{sp.shares}|{sp.price}"[:180]
             if key in keys:
@@ -704,7 +731,7 @@ async def upsert_inferred_splits(account_hash: str, splits: list[Fill]) -> int:
                 order_type="INFERRED", order_id=None, source="inferred", fill_key=key,
             ))
             keys.add(key)
-            added += 1
+            added.append(sp)
         if added:
             await s.commit()
     return added
@@ -725,6 +752,10 @@ async def heal_ledger(account_hash: str) -> dict:
         await _rekey_cusip_split_rows(account_hash)   # SPLT rows filed under a CUSIP → ticker
     except Exception as e:
         log.warning(f"heal {account_hash[-4:]}: CUSIP split rekey failed (non-fatal): {e!r}")
+    try:
+        await _drop_noop_inferred_splits(account_hash)
+    except Exception as e:
+        log.warning(f"heal {account_hash[-4:]}: no-op split cleanup failed (non-fatal): {e!r}")
     async with SessionLocal() as s:
         rows = (await s.execute(
             select(FillRecord).where(FillRecord.account_hash == account_hash,

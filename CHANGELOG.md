@@ -3,6 +3,24 @@
 Patch notes for each release. The newest version's section is pulled into the GitHub
 release automatically and shown inside the app when an update is ready to install.
 
+## v0.100.0 — Notifications fixed, and an API explorer
+
+- **The Notifications tab opens again.** v0.99.0 gave split notices their own category,
+  and the feed didn't know how to draw it, so the whole tab failed with "Something broke
+  on screen". Split notices now have their own icon and count in the tab's badge. Any
+  future category the feed doesn't recognize shows as "Other" instead of breaking the page.
+- **No more phantom "1:1 split" notices.** Split detection mistook a 1-share RKLB holding
+  for a split, because Schwab's average cost differs from the app's LIFO one. It then
+  re-posted the notice on every sync, every 2 minutes. A split now has to change your share
+  count, and a very small holding that could match several split ratios is left alone. The
+  bogus record and its duplicate notices are removed automatically. A real split posts
+  one notice, once.
+- **New: Explore tab (experimental).** Every read-only call the Schwab API offers, runnable
+  against the selected account. You see the raw response and a list of every field in it
+  with sample values, plus a note on what the app does with that endpoint today. Start with
+  a question such as "How does Schwab record a split?" It can't place, change or cancel
+  orders.
+
 ## v0.99.0 — "What you see is what gets sold"
 
 - **Sell only where a sale actually happens.** Sales always come off your newest position

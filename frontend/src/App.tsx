@@ -22,7 +22,7 @@ import { tickerRiskColor } from "./columns";
 import { Ledger } from "./Ledger";
 import { NotificationsProvider, NotificationsTab } from "./Notifications";
 import { useNotifs } from "./notifications/store";
-import { KIND_ICON } from "./notifications/FeedPanel";
+import { KIND_FALLBACK, KIND_ICON } from "./notifications/FeedPanel";
 import { Orders } from "./Orders";
 import { OrderTicket } from "./OrderTicket";
 import { PositionDetail } from "./PositionDetail";
@@ -30,6 +30,7 @@ import { MarketHoursBadge } from "./MarketHoursBadge";
 import { Settings } from "./Settings";
 import { FinancialRules } from "./FinancialRules";
 import { Method } from "./Method";
+import { Explore } from "./Explore";
 import { SkeletonTable } from "./Skeleton";
 import { useToast } from "./Toast";
 import type { AlertPrefill, DashboardRow, Suggestion } from "./types";
@@ -44,9 +45,10 @@ const NAV: { id: View; label: string }[] = [
   { id: "rules", label: "Rules" },
   { id: "method", label: "Method" },
   { id: "notifications", label: "Notifications" },
+  { id: "explore", label: "Explore" },
   { id: "settings", label: "Settings" },
 ];
-type View = "dashboard" | "ledger" | "orders" | "rules" | "method" | "notifications" | "settings";
+type View = "dashboard" | "ledger" | "orders" | "rules" | "method" | "notifications" | "explore" | "settings";
 
 export function App() {
   const [selected, setSelected] = useState<string | null>(null);
@@ -428,6 +430,8 @@ export function App() {
           <FinancialRules key={acctKey} onDirtyChange={setSettingsDirty} />
         ) : view === "method" ? (
           <Method key={acctKey} />
+        ) : view === "explore" ? (
+          <Explore key={acctKey} />
         ) : view === "notifications" ? (
           <NotificationsTab prefill={alertPrefill} onPrefillConsumed={() => setAlertPrefill(null)} />
         ) : view === "ledger" ? (
@@ -557,17 +561,20 @@ export function App() {
 // Per-type unread pills on the Notifications nav tab — a separate bubble per category
 // (order fills, strategy triggers, price alerts, system) so the mix reads at a glance,
 // instead of one aggregate count. Same glyph/color language as the feed itself.
-const NOTIF_PILL_ORDER = ["fill", "trigger", "alert", "system", "other"];
+const NOTIF_PILL_ORDER = ["fill", "trigger", "alert", "notice", "system"];
 function NotifNavBadge() {
   const { unreadByKind } = useNotifs();
-  const pills = NOTIF_PILL_ORDER
-    .map((k) => [k, unreadByKind[k] ?? 0] as const)
+  // Known kinds in a fixed order; anything else is summed into one "other" pill.
+  const other = Object.entries(unreadByKind)
+    .filter(([k]) => !NOTIF_PILL_ORDER.includes(k))
+    .reduce((s, [, n]) => s + n, 0);
+  const pills = [...NOTIF_PILL_ORDER.map((k) => [k, unreadByKind[k] ?? 0] as const), ["other", other] as const]
     .filter(([, n]) => n > 0);
   if (pills.length === 0) return null;
   return (
     <span style={S.notifPills}>
       {pills.map(([k, n]) => {
-        const meta = KIND_ICON[k] ?? { glyph: "•", color: "var(--text-dim)", label: "Other" };
+        const meta = KIND_ICON[k] ?? KIND_FALLBACK;
         return (
           <span key={k} style={{ ...S.notifPill, color: meta.color, borderColor: meta.color }}
             title={`${n} unread ${meta.label.toLowerCase()}${n === 1 ? "" : "s"}`}>
