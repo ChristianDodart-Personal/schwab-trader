@@ -113,6 +113,32 @@ const RangeBar = ({ r }: { r: DashboardRow }) => {
   );
 };
 
+// Multi-horizon trend: one ▲/▼ cell per horizon (1M, 3M, 6M, 12M; blank when history is
+// too short) plus the net score. Reference only; no signal or order reads it.
+const TREND_KEYS = ["1M", "3M", "6M", "12M"] as const;
+const Trend = ({ r }: { r: DashboardRow }) => {
+  if (r.trend_score == null || !r.trend) return <Dash />;
+  const t = r.trend;
+  const tip = TREND_KEYS.map((k) => `${k} ${t[k] == null ? "n/a" : pct(t[k])}`).join(" · ");
+  const net = r.trend_score;
+  return (
+    <span title={tip} aria-label={`Trend ${net > 0 ? "+" : ""}${net} of ${r.trend_n}: ${tip}`}
+      style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+      <span aria-hidden="true" style={{ display: "inline-flex", gap: 2 }}>
+        {TREND_KEYS.map((k) => {
+          const v = t[k];
+          const color = v == null ? "var(--text-faint)" : v > 0 ? "var(--pos)" : v < 0 ? "var(--neg)" : "var(--text-dim)";
+          return <span key={k} style={{ color, fontSize: "var(--fs-2xs)", width: 9, textAlign: "center" }}>
+            {v == null ? "·" : v > 0 ? "▲" : v < 0 ? "▼" : "–"}</span>;
+        })}
+      </span>
+      <b style={{ color: net > 0 ? "var(--pos)" : net < 0 ? "var(--neg)" : "var(--text-dim)", minWidth: 18, textAlign: "right" }}>
+        {net > 0 ? `+${net}` : net}
+      </b>
+    </span>
+  );
+};
+
 // This position's share of your invested cost (cash excluded). Informational only:
 // the old 5% single-stock cap was removed (it only mattered for very large accounts).
 const PortfolioPct = ({ r }: { r: DashboardRow }) =>
@@ -204,6 +230,7 @@ export const DASH_COLUMN_LIST: DashCol[] = [
   // and high as endpoints, a median tick, and a price dot. Combines pct_of_high/low +
   // median into one scannable visual.
   { id: "range", label: "52-week range", align: "left", term: "52wk_low_pct", render: (r) => <RangeBar r={r} /> },
+  { id: "trend_score", label: "Trend", align: "left", term: "trend_score", render: (r) => <Trend r={r} /> },
   { id: "lilo_pct", label: "LILO %", align: "right", term: "lilo_pct", watchNA: true, render: (r) => <Colored v={pct(r.lilo_pct)} n={r.lilo_pct} /> },
   { id: "last_pos_cost", label: "Last Pos Cost", align: "right", term: "cost_basis", watchNA: true, render: (r) => usd(r.last_pos_cost) },
   { id: "invested", label: "Invested", align: "right", term: "invested", watchNA: true, render: (r) => usd(r.invested) },

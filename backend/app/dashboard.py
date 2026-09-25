@@ -174,6 +174,11 @@ def _base_row(symbol: str, ticker: Ticker | None,
         "year_low": year_low,
         "ref_window_weeks": ref_weeks,
     }
+    # Multi-horizon trend (1/3/6/12-month returns → net horizons up minus down). Reference
+    # only: nothing in the strategy or order path reads it.
+    tr = avg52.trend(symbol)
+    ts = avg52.trend_score(tr)
+    row.update(trend=tr, trend_score=ts[0] if ts else None, trend_n=ts[1] if ts else None)
     return row, price, has_price, quote
 
 

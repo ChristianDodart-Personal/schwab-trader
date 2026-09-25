@@ -35,7 +35,12 @@ _MIN_DAYS = 20
 # — no extra fetch. Candles come back oldest→newest, so the last N are the most recent.
 _SHORT_DAYS = 63
 
-# symbol -> {"mean", "median", "s_mean", "s_median", "s_high", "s_low", "days", "asof"}
+# Trend horizons in trading days (≈ 1, 3, 6, 12 months) for the multi-horizon trend score.
+# The 1-year fetch returns ~250 bars, so a horizon counts as available once the history
+# covers 95% of it (12M then anchors on the oldest close).
+TREND_HORIZONS = (("1M", 21), ("3M", 63), ("6M", 126), ("12M", 252))
+
+# symbol -> {"mean", "median", "s_mean", "s_median", "s_high", "s_low", "trend", "days", "asof"}
 # ("s_*" = the short 13-week window; long mean/median cover the full year.)
 _cache: dict[str, dict] = {}
 _inflight: set[str] = set()
@@ -101,6 +106,36 @@ def short_stats(symbol: str) -> dict | None:
             "high": entry["s_high"], "low": entry["s_low"]}
 
 
+def trend(symbol: str) -> dict | None:
+    """{"1M": r, "3M": r, "6M": r, "12M": r} close-to-close returns as of the last daily
+    close (None per horizon when history is too short). Non-blocking, same cache."""
+    entry = _ensure(symbol.upper())
+    return entry.get("trend") if entry else None
+
+
+def trend_returns(closes: list[float]) -> dict[str, float | None]:
+    """Pure: return over each horizon, from the last close back h trading days."""
+    out: dict[str, float | None] = {}
+    last = len(closes) - 1
+    for key, h in TREND_HORIZONS:
+        if last >= int(h * 0.95) and closes[-1] > 0:
+            base = closes[last - min(h, last)]
+            out[key] = round(closes[-1] / base - 1, 4) if base > 0 else None
+        else:
+            out[key] = None
+    return out
+
+
+def trend_score(returns: dict[str, float | None] | None) -> tuple[int, int] | None:
+    """Pure: (net, n) = horizons up minus horizons down, over the n horizons available.
+    Needs at least two horizons (1M and 3M), else None. A flat 0.0 return counts as
+    neither up nor down."""
+    vals = [r for r in (returns or {}).values() if r is not None]
+    if len(vals) < 2:
+        return None
+    return sum((r > 0) - (r < 0) for r in vals), len(vals)
+
+
 def _median(xs: list[float]) -> float:
     s = sorted(xs)
     n = len(s)
@@ -133,6 +168,7 @@ async def _refresh(symbol: str) -> None:
             "s_median": round(_median(short), 4) if enough else None,
             "s_high": round(max(short), 4) if enough else None,
             "s_low": round(min(short), 4) if enough else None,
+            "trend": trend_returns(closes),
             "days": days,
             "asof": _today(),
         }

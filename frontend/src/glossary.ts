@@ -430,6 +430,20 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     source: "hybrid",
     related: ["cost_basis", "invested"],
   },
+  trend_score: {
+    term: "Trend",
+    oneLiner: "Whether the price is rising or falling over 1, 3, 6 and 12 months, and how many of those agree.",
+    howItWorks: "Each arrow is one lookback: ▲ the price is higher than it was then, ▼ lower, · not enough history yet. " +
+      "The number is the arrows up minus the arrows down, so +4 means up on every horizon and −4 means down on every one. " +
+      "Blending several lookbacks avoids betting on any single window. It measures the trend, not value: a −4 name may be " +
+      "cheap, or may keep falling. Leveraged and inverse ETFs lose value to daily rebalancing, which pulls their longer " +
+      "horizons down even when the underlying stock is flat. Reference only; it doesn't change BUY/SELL or any order.",
+    howCalculated: "For h = 21, 63, 126 and 252 trading days: last daily close ÷ the close h days earlier − 1. " +
+      "Score = (horizons with a positive return) − (horizons with a negative return). As of the last daily close, " +
+      "refreshed once a day from the same year of candles as the 52-week figures.",
+    source: "computed",
+    related: ["52wk_high_pct", "buy_dip"],
+  },
   "52wk_high_pct": {
     term: "% of 52-week high",
     oneLiner: "Where the price sits relative to its highest point in the last year.",

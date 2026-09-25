@@ -16,6 +16,11 @@ export type DashboardRow = {
   median_52wk: number | null; // median daily close over the past year (spike-robust "typical" price)
   pct_of_high: number | null;
   pct_of_low: number | null;
+  // Multi-horizon trend: close-to-close returns (null = history too short), and the net
+  // count of horizons up minus down over the trend_n horizons available (−4…+4).
+  trend?: { "1M": number | null; "3M": number | null; "6M": number | null; "12M": number | null } | null;
+  trend_score?: number | null;
+  trend_n?: number | null;
   market_cap?: number | null;        // sharesOutstanding × price (Schwab)
   first_buy_shares?: number | null;  // shares matching a rung-1 dollar size — prefills a fresh buy
   portfolio_pct: number | null;

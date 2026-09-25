@@ -3,6 +3,16 @@
 Patch notes for each release. The newest version's section is pulled into the GitHub
 release automatically and shown inside the app when an update is ready to install.
 
+## v0.101.0 — Trend column
+
+- **New optional dashboard column: Trend.** Add it from the column picker. It shows whether
+  each ticker is up or down over the last 1, 3, 6 and 12 months (one arrow each) and a score
+  from −4 to +4: the horizons up minus the horizons down. Hover it for the exact returns.
+  It's computed once a day from the year of prices the app already downloads for the
+  52-week columns, so it adds no Schwab calls. It's for reference only and doesn't change
+  BUY/SELL signals or orders. For leveraged ETFs, read the longer horizons with care: those
+  funds lose value to daily rebalancing, which drags them down over time.
+
 ## v0.100.0 — Notifications fixed, and an API explorer
 
 - **The Notifications tab opens again.** v0.99.0 gave split notices their own category,
