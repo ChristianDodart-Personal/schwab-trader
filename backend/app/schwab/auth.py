@@ -166,10 +166,11 @@ def reset_client() -> None:
     global _cached_client, _reauth_needed
     _cached_client = None
     _reauth_needed = False
-    # Drop avg52's failure backoff too — the dead token parked every symbol for 5
-    # min, so without this the 52wk columns stay blank for minutes after reconnect.
-    from .. import avg52
+    # Drop avg52's and ladder_stats' failure backoff too — the dead token parked every
+    # symbol for 5 min, so without this those columns stay blank for minutes after reconnect.
+    from .. import avg52, ladder_stats
     avg52.reset_backoff()
+    ladder_stats.reset_backoff()
 
 
 def interactive_login():

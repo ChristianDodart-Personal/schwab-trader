@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { usd } from "./format";
 import { Modal } from "./Modal";
 import type { BulkUI } from "./DashboardTable";
-import type { BulkResult, BuyCandidate, DashboardRow, SellCandidate } from "./types";
+import type { BulkResult, BuyCandidate, DashboardRow, LadderRead, SellCandidate } from "./types";
+import { needsIcon, readLines, TONE_COLOR } from "./ladderRead";
+import { Tip } from "./Tip";
 
 import { API } from "./api";
 import { IconClose, IconWarning } from "./Icon";
@@ -114,7 +116,7 @@ export function useBulk(rows: DashboardRow[] | undefined, mode: string | undefin
 }
 
 export function BulkReviewModal({
-  kind, items, mode, placing, result, onConfirm, onClose, buyingPower,
+  kind, items, mode, placing, result, onConfirm, onClose, buyingPower, ladder,
 }: {
   kind: Kind;
   items: AnyCandidate[];
@@ -124,6 +126,7 @@ export function BulkReviewModal({
   onConfirm: (orderType: string, rows: EditRow[], session: string) => void;
   onClose: () => void;
   buyingPower?: number | null; // advisory: flag when selected buy total exceeds it
+  ladder?: Record<string, LadderRead | null | undefined>; // reference chips on BUY rows
 }) {
   const isDemo = mode === "demo";
   const isSell = kind === "sell";
@@ -215,6 +218,17 @@ export function BulkReviewModal({
                     return (
                       <tr key={r.lot_id ?? r.symbol}>
                         <td className="left"><b>{r.symbol}</b>{r.is_new && <span style={S.newTag}>new</span>}
+                          {!isSell && ladder?.[r.symbol] && (
+                            <div style={S.readChips}>
+                              {readLines(ladder[r.symbol]).filter((l) => l.key !== "decay" || l.tone !== "neutral").map((l) => (
+                                <Tip key={l.key} text={`${l.title}. ${l.detail}`} focusable={false}>
+                                  <span style={{ color: TONE_COLOR[l.tone], display: "inline-flex", alignItems: "center", gap: 2 }}>
+                                    {needsIcon(l.tone) && <IconWarning size={10} />}{l.chip}
+                                  </span>
+                                </Tip>
+                              ))}
+                            </div>
+                          )}
                           {belowCost && (
                             <div style={S.rowWarn}>
                               <IconWarning size={11} /> {isLimit
@@ -328,6 +342,7 @@ const S: Record<string, React.CSSProperties> = {
   typeRow: { display: "flex", alignItems: "center", gap: 10, marginTop: 12 },
   typeDesc: { fontSize: "var(--fs-xs)", color: "var(--text-dim)", margin: "6px 0 0", lineHeight: 1.45 },
   numIn: { width: 78, textAlign: "right", padding: "3px 6px", fontSize: "var(--fs-sm)" },
+  readChips: { display: "flex", flexWrap: "wrap", gap: "2px 8px", marginTop: 2, fontSize: "var(--fs-2xs)", fontWeight: 600 },
   newTag: { fontSize: 10, textTransform: "uppercase", color: "var(--accent-quiet)", border: "1px solid var(--border-strong)", borderRadius: "var(--r-sm)", padding: "0 5px", marginLeft: 6 },
   demoStrip: { background: "var(--panel-2)", borderBottom: "1px solid var(--border)", color: "var(--text-dim)", fontSize: "var(--fs-xs)", fontWeight: 600, padding: "8px 16px", borderTopLeftRadius: "var(--r-lg)", borderTopRightRadius: "var(--r-lg)" },
   title: { fontSize: "var(--fs-md)", fontWeight: 600 },

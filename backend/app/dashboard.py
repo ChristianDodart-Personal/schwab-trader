@@ -12,7 +12,7 @@ from datetime import date, datetime
 
 from sqlalchemy import func, select
 
-from . import avg52, config_store, grouping, risk as risk_mod
+from . import avg52, config_store, grouping, ladder_stats, risk as risk_mod
 from .db import SessionLocal
 from .db.models import CompletedTrade, Lot, Ticker
 from .ledger import MARKET_TZ, get_dividends, get_etf_links, get_last_held
@@ -223,7 +223,15 @@ def _summary_row(symbol: str, lots: list[Lot], ticker: Ticker | None,
     days = (_today() - anchor).days if anchor else 0
     avg_monthly = (log_profit / days * 30) if days > 0 else 0.0
 
+    # Ladder read (reference only): measured from the newest priced lot, the one the
+    # ladder's next rung and LIFO sale both key off.
+    ladder = ladder_stats.row_fields(symbol, ladder_stats.read(
+        symbol, cfg, price if has_price else None,
+        anchor=(_f(sell_anchor.buy_price), sell_anchor.buy_date) if _f(sell_anchor.buy_price) > 0 else None,
+        next_buy=next_buy, leverage=_leverage(ticker)))
+
     return {
+        **ladder,
         **base,   # symbol, name, sector, risk, price, avg/median_52wk, pct_of_high/low,
                   # market_cap, first_buy_shares, year_high/low, ref_window_weeks
         "is_watch": False,
@@ -477,9 +485,16 @@ async def _build_dashboard_uncached(account_hash: str) -> dict:
     }
 
 
+def _leverage(ticker: Ticker | None) -> float | None:
+    return grouping.leverage_factor(ticker.name, ticker.industry) if ticker else None
+
+
 def _watch_row(ticker: Ticker, cfg: StrategyConfig) -> dict:
-    base, *_ = _base_row(ticker.symbol, ticker, cfg)
+    base, price, has_price, _q = _base_row(ticker.symbol, ticker, cfg)
+    ladder = ladder_stats.row_fields(ticker.symbol, ladder_stats.read(
+        ticker.symbol, cfg, price if has_price else None, leverage=_leverage(ticker)))
     return {
+        **ladder,
         **base,   # symbol, name, sector, risk, price, avg/median_52wk, pct_of_high/low,
                   # market_cap, first_buy_shares, year_high/low, ref_window_weeks
         "is_watch": True,
@@ -560,6 +575,8 @@ async def build_position_detail(symbol: str, account_hash: str) -> dict | None:
             "underlying": etf_underlying, "is_leveraged": etf_is_lev,
             "rules_override": sym_override,
             "lots": [], "projected_ladder": [],
+            "ladder_read": ladder_stats.read(symbol, cfg, wprice, leverage=_leverage(ticker), events=True),
+            "ladder_status": ladder_stats.status(symbol),
         }
 
     quote = hub.latest.get(symbol, {})
@@ -656,4 +673,12 @@ async def build_position_detail(symbol: str, account_hash: str) -> dict | None:
         "rules_override": sym_override,   # per-ticker override (None = global rules)
         "lots": lot_rows,
         "projected_ladder": projected,
+        # Reference only: measured from the newest priced lot (what the next rung and the
+        # LIFO sale key off), with the next rung's trigger for the "how far to go" line.
+        "ladder_read": ladder_stats.read(
+            symbol, cfg, price if has_price else None,
+            anchor=(_f(priced[-1].buy_price), priced[-1].buy_date) if priced else None,
+            next_buy=projected[0]["trigger_price"] if projected else None,
+            leverage=_leverage(ticker), events=True),
+        "ladder_status": ladder_stats.status(symbol),
     }

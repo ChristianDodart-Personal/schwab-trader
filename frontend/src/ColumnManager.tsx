@@ -35,6 +35,14 @@ export function ColumnManager({
     triggerRef.current?.focus();
   };
 
+  // Grouped columns (e.g. "Ladder read") get their own <optgroup> and an "Add all" button.
+  const groups: [string, { id: string; label: string }[]][] = [];
+  for (const c of prefs.available) {
+    if (!c.group) continue;
+    const g = groups.find(([k]) => k === c.group);
+    if (g) g[1].push(c); else groups.push([c.group, [c]]);
+  }
+
   const doAdd = () => {
     if (toAdd) {
       prefs.add(toAdd);
@@ -112,12 +120,24 @@ export function ColumnManager({
           <div style={S.addRow}>
             <select className="field" style={S.select} value={toAdd} onChange={(e) => setToAdd(e.target.value)}>
               <option value="">Add a column…</option>
-              {prefs.available.map((c) => (
+              {prefs.available.filter((c) => !c.group).map((c) => (
                 <option key={c.id} value={c.id}>{c.label}</option>
+              ))}
+              {groups.map(([g, cols]) => (
+                <optgroup key={g} label={g}>
+                  {cols.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                </optgroup>
               ))}
             </select>
             <button className="btn btn-primary btn-sm" onClick={doAdd} disabled={!toAdd}>Add</button>
           </div>
+          {groups.filter(([, cols]) => cols.length > 1).map(([g, cols]) => (
+            <button key={g} className="btn btn-ghost btn-sm" style={{ marginTop: 6 }}
+              onClick={() => cols.forEach((c) => prefs.add(c.id))}
+              title={`Add ${cols.map((c) => c.label).join(", ")}`}>
+              Add all {g} columns ({cols.length})
+            </button>
+          ))}
         </div>
       )}
     </span>

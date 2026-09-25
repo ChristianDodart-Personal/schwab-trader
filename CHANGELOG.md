@@ -3,6 +3,32 @@
 Patch notes for each release. The newest version's section is pulled into the GitHub
 release automatically and shown inside the app when an update is ready to install.
 
+## v0.102.0 — Ladder read
+
+Five measures from each stock's last 5 years of daily prices, worked out with your own
+rung drops and sell target. They're for reference only: none of them changes a BUY/SELL
+signal or an order.
+
+- **Bounce rate.** After past dips the size of your rung-2 drop, how often did the price
+  reach your sell target within 3 months, and how fast? It also shows how deep those dips
+  went (the worst rung reached and the dollars that would have taken), and how often a
+  random day would have hit the same target. It shows green only when dips clearly did
+  better than a random day. A warning appears if any past dip ran to rung 8 or deeper.
+- **Chop.** Whether the price has been swinging back and forth (the conditions a ladder
+  earns in) or moving steadily one way. A move of more than 1.5 rungs counts as a trend,
+  even on a stock that's jumpy day to day.
+- **Dip size.** Whether the drop since your last buy is normal, big or rare for this
+  stock, compared with how it moved before the drop. It also shows how far away your next
+  rung is.
+- **Why down.** How much of the drop the S&P 500 explains, and how much is the stock on
+  its own.
+- **Decay (leveraged funds only).** What the fund loses each month to daily rebalancing
+  at its current volatility.
+
+Where to find it: add the columns from the picker (the new "Ladder read" group has an
+"Add all" button), open any ticker's drill-down for the full read and its recent dips,
+or look at a Buy ticket and the bulk-buy review.
+
 ## v0.101.0 — Trend column
 
 - **New optional dashboard column: Trend.** Add it from the column picker. It shows whether

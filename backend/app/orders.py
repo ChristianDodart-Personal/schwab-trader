@@ -521,6 +521,22 @@ async def suggest_buy(symbol: str, account_hash: str) -> dict:
         bp = None
     out["buying_power"] = bp
     out["affordable"] = (out["est_cost"] <= bp) if bp is not None else None
+    # Reference only, shown on the ticket where the rung is decided: the same ladder read
+    # the drill-down has. Never affects the order; any failure just leaves it out.
+    try:
+        from . import grouping, ladder_stats
+        from .db.models import Ticker
+        from .schwab.streaming import hub
+        async with SessionLocal() as s:
+            t = (await s.execute(select(Ticker).where(Ticker.symbol == symbol))).scalar_one_or_none()
+        priced = [l for l in lots if _f(l.buy_price) > 0]
+        last = hub.latest.get(symbol, {}).get("last")
+        out["ladder_read"] = ladder_stats.read(
+            symbol, cfg, _f(last) if last is not None else None,
+            anchor=(_f(priced[-1].buy_price), priced[-1].buy_date) if priced else None,
+            next_buy=trigger, leverage=grouping.leverage_factor(t.name, t.industry) if t else None)
+    except Exception:
+        out["ladder_read"] = None
     return out
 
 

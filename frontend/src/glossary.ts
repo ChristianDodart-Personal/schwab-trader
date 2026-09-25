@@ -430,6 +430,78 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     source: "hybrid",
     related: ["cost_basis", "invested"],
   },
+  ladder_read: {
+    term: "Ladder read",
+    oneLiner: "Five measures from this stock's price history that speak to a buy-the-dip, sell-LIFO ladder.",
+    howItWorks: "Bounce rate asks whether this stock has come back from dips like yours. Chop asks whether it's swinging back and forth right now. " +
+      "Dip size asks how unusual the current drop is for this stock. Why down asks whether the market or the stock itself caused it. " +
+      "Rebalance decay (leveraged funds only) is what waiting costs. All are reference only: none changes BUY/SELL or any order.",
+    howCalculated: "From 5 years of daily prices, refreshed once a day, using your own rung drops and sell target.",
+    source: "computed",
+    related: ["bounce_rate", "chop", "dip_size", "why_down", "rebalance_decay"],
+  },
+  bounce_rate: {
+    term: "Bounce rate",
+    oneLiner: "How often this stock came back from a dip the size of your first ladder drop.",
+    howItWorks: "Each past dip is treated like a rung-2 buy at that day's close. It counts as a bounce if the price then reached your " +
+      "sell target within 3 months. It's compared with how often ANY day reached the same target (a volatile stock hits +10% from almost " +
+      "anywhere), so it's green only when dips beat a random buy by 10+ points, and red when they trail it by 10+ points (or bounce under 40% of the time). The deepest rung any dip reached, and the dollars that took, " +
+      "are shown too, both from the dip that fell furthest: any dip that reached rung 8+ (your largest buys) makes it a caution whatever the rate. The ladder has no depth cap, so a dip can go past rung 10 at your deepest size and last drop; that's counted too. Needs at least 3 completed dips. " +
+      "Past bounces don't guarantee future ones: a company can change.",
+    howCalculated: "Dip = a close at least your rung-2 drop (e.g. 10%) below the highest close of the previous 20 trading days. " +
+      "Bounce = the daily high reaching that close × (1 + your sell gain) within 63 trading days. In $-gain mode the sell gain is " +
+      "your $ gain ÷ the rung-2 buy size. Further rungs trigger at your rung 3+ drops from the previous trigger, on the daily low. " +
+      "Dips don't overlap: the next one is looked for after the last resolves. Rate = bounces ÷ completed dips over 5 years " +
+      "(a dip still inside its 3 months isn't counted). Random-buy rate = share of all days whose high reached that close × (1 + sell gain) within 63 days.",
+    source: "computed",
+    related: ["ladder_read", "buy_dip", "sell_target"],
+  },
+  chop: {
+    term: "Chop",
+    oneLiner: "Whether the price has been swinging back and forth (good for a ladder) or moving steadily one way.",
+    howItWorks: "A ladder earns on swings: each drop and recovery can be a round trip. A steady fall is the worst case, because the " +
+      "ladder keeps buying bigger rungs into it. A steady rise means dips are rare. It's measured in your rung units: a volatile stock " +
+      "can slide 25% while still looking noisy day to day, but for a ladder that's 2+ rungs bought into a fall, so it counts as a trend. " +
+      "Sorting this column puts the choppiest first and steady falls last.",
+    howCalculated: "Over the last 63 trading days: net move = last close ÷ the close 63 days earlier − 1; efficiency ratio = |net price change| ÷ the sum of every daily change. " +
+      "Trending (up or down by the net move) if the net move is at least 1.5 rung-2 drops, or the efficiency ratio is 0.30+ with at least half a rung of net move. " +
+      "Otherwise choppy if the efficiency ratio is under 0.15 (a random walk sits near 0.13), else mixed.",
+    source: "computed",
+    related: ["ladder_read", "trend_score"],
+  },
+  dip_size: {
+    term: "Dip size",
+    oneLiner: "Whether the drop since your last buy is normal, big or rare for this particular stock.",
+    howItWorks: "Your rungs use fixed drops, but 10% means different things on different stocks: routine for one that moves 6% a day, " +
+      "rare for a steady one. The drop is compared with how far this stock normally moves over the same number of days, since moves " +
+      "grow with time. The yardstick is how the stock moved BEFORE this drop, so a crash can't make itself look normal. " +
+      "Near buy = under a quarter of a normal move, normal = under 1×, big = 1–2×, rare = 2× or more (marked). Watchlist rows measure from the 20-day high. " +
+      "The drill-down adds how far below your next rung is, in % and in typical days' moves: roughly how soon it could trigger.",
+    howCalculated: "Typical daily move σ = standard deviation of daily % changes over the 63 trading days up to your last buy (watchlist: up to the 20-day high). " +
+      "Normal move over the span = σ × √(trading days since then). Dip size = (price ÷ newest lot's buy price − 1) ÷ that normal move. " +
+      "Next rung = next rung price ÷ price − 1, and that ÷ σ in typical days' moves.",
+    source: "computed",
+    related: ["ladder_read", "lilo_pct", "buy_dip"],
+  },
+  why_down: {
+    term: "Why down",
+    oneLiner: "Whether the market or the stock itself explains the fall since your last buy.",
+    howItWorks: "Separates a market-wide sell-off from a drop of the stock's own. A stock-specific drop has a cause of its own, worth knowing before adding a rung. " +
+      "Shown only when the stock is down more than one typical daily move. Sorting puts market-driven drops first.",
+    howCalculated: "Beta = slope of the stock's daily returns on the S&P 500 (SPY) over the last year. Market part = beta × the S&P's move since your " +
+      "last buy (watchlist: since the 20-day high). Market share = market part ÷ the stock's move, 0–100%: 60%+ = market drop, 35% or less = stock-specific, between = part market.",
+    source: "computed",
+    related: ["ladder_read", "dip_size"],
+  },
+  rebalance_decay: {
+    term: "Rebalance decay",
+    oneLiner: "What a leveraged or inverse fund loses each month to daily rebalancing at its current volatility.",
+    howItWorks: "A 2× fund resets its leverage every day, so in a choppy market it loses value even when the underlying ends flat. The more volatile, the bigger the loss. " +
+      "It's the cost of waiting while a ladder sits deep in such a fund. 3%+ a month is marked. Leverage comes from the fund's name.",
+    howCalculated: "21 × (L² − L) ÷ 2 × (fund's typical daily move ÷ |L|)², where L is the leverage (2, 3, −1, −2…).",
+    source: "computed",
+    related: ["ladder_read", "chop"],
+  },
   trend_score: {
     term: "Trend",
     oneLiner: "Whether the price is rising or falling over 1, 3, 6 and 12 months, and how many of those agree.",

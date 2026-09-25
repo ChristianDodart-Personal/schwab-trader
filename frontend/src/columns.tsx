@@ -6,6 +6,8 @@ import { moneyColor } from "./LedgerUI";
 
 import { API } from "./api";
 import { IconWarning } from "./Icon";
+import { bounceLine, chopLine, decayLine, dipLine, whyLine, needsIcon, STATUS_TEXT, TONE_COLOR, type ReadLine } from "./ladderRead";
+import { Tip } from "./Tip";
 
 // ============================================================================
 // Customizable columns. Each view (dashboard, ticker drill-down) has its own
@@ -28,6 +30,7 @@ export type DashCol = {
   prov?: Provenance;
   term?: string;                           // glossary id — header becomes a hoverable <Term>
   watchNA?: boolean;                       // render "—" on watch rows (no position)
+  group?: string;                          // picker section (e.g. "Ladder read"); ungrouped = main list
   render: (r: DashboardRow) => React.ReactNode;
 };
 export type DetailCol = {
@@ -139,6 +142,44 @@ const Trend = ({ r }: { r: DashboardRow }) => {
   );
 };
 
+// Ladder-read cells: the short chip (colored by tone, with a warning glyph when it's a
+// caution so it never rests on color alone) and the full sentence in a hover tip. While
+// the 5-year history loads: a faint "…"; if the fetch failed: a faint "n/a".
+const ReadCell = ({ r, line, chip, sub }: { r: DashboardRow; line: ReadLine | null; chip?: string; sub?: string }) => {
+  if (!r.ladder) {
+    if (r.ladder_status === "unavailable")
+      return <Tip text={STATUS_TEXT.unavailable} focusable={false}><span style={{ color: "var(--text-faint)" }}>n/a</span></Tip>;
+    if (r.ladder_status === "short")
+      return <Tip text={STATUS_TEXT.short} focusable={false}><span style={{ color: "var(--text-faint)" }}>new</span></Tip>;
+    if (r.ladder_status === "loading")
+      return <Tip text={STATUS_TEXT.loading} focusable={false}><span style={{ color: "var(--text-faint)" }}>…</span></Tip>;
+    return <Dash />;
+  }
+  if (line == null) return <Dash />;
+  return (
+    <Tip text={`${line.title}. ${line.detail}`} focusable={false} style={{ whiteSpace: "nowrap" }}>
+      <span style={{ color: TONE_COLOR[line.tone], fontWeight: line.tone === "neutral" ? 500 : 600, display: "inline-flex", alignItems: "center", gap: 3 }}>
+        {needsIcon(line.tone) && <IconWarning size={11} />}{chip ?? line.chip}
+      </span>
+      {sub && <span style={{ color: "var(--text-faint)", fontSize: "var(--fs-2xs)", marginLeft: 6 }}>{sub}</span>}
+    </Tip>
+  );
+};
+const BounceCell = ({ r }: { r: DashboardRow }) => {
+  const line = r.ladder ? bounceLine(r.ladder) : null;
+  const b = r.ladder?.bounce;
+  const sub = b && b.rate != null
+    ? `${b.recovered}/${b.dips}${b.worst_rung && b.worst_rung > 2 ? ` · worst rung ${b.worst_rung}` : ""}`
+    : undefined;
+  return <ReadCell r={r} line={line} chip={b?.rate != null ? `${Math.round(b.rate * 100)}%` : undefined} sub={sub} />;
+};
+const DipCell = ({ r }: { r: DashboardRow }) => {
+  const line = r.ladder ? dipLine(r.ladder) : null;
+  const d = r.ladder?.dip;
+  const sub = line && d && d.norm != null && d.norm <= -0.25 ? `${Math.abs(d.norm).toFixed(1)}× · ${d.days}d` : undefined;
+  return <ReadCell r={r} line={line} sub={sub} />;
+};
+
 // This position's share of your invested cost (cash excluded). Informational only:
 // the old 5% single-stock cap was removed (it only mattered for very large accounts).
 const PortfolioPct = ({ r }: { r: DashboardRow }) =>
@@ -231,6 +272,14 @@ export const DASH_COLUMN_LIST: DashCol[] = [
   // median into one scannable visual.
   { id: "range", label: "52-week range", align: "left", term: "52wk_low_pct", render: (r) => <RangeBar r={r} /> },
   { id: "trend_score", label: "Trend", align: "left", term: "trend_score", render: (r) => <Trend r={r} /> },
+  // Ladder read: the id is the flat sortable field (DashboardTable sorts by row[id]; the
+  // first click is descending, and each field is oriented so that puts the most
+  // ladder-relevant rows first).
+  { id: "bounce_rate", label: "Bounce rate", align: "left", term: "bounce_rate", group: "Ladder read", render: (r) => <BounceCell r={r} /> },
+  { id: "chop_score", label: "Chop", align: "left", term: "chop", group: "Ladder read", render: (r) => <ReadCell r={r} line={r.ladder ? chopLine(r.ladder) : null} /> },
+  { id: "dip_depth", label: "Dip size", align: "left", term: "dip_size", group: "Ladder read", render: (r) => <DipCell r={r} /> },
+  { id: "why_market_share", label: "Why down", align: "left", term: "why_down", group: "Ladder read", render: (r) => <ReadCell r={r} line={r.ladder ? whyLine(r.ladder) : null} /> },
+  { id: "decay_month", label: "Decay", align: "left", term: "rebalance_decay", group: "Ladder read", render: (r) => <ReadCell r={r} line={r.ladder ? decayLine(r.ladder) : null} /> },
   { id: "lilo_pct", label: "LILO %", align: "right", term: "lilo_pct", watchNA: true, render: (r) => <Colored v={pct(r.lilo_pct)} n={r.lilo_pct} /> },
   { id: "last_pos_cost", label: "Last Pos Cost", align: "right", term: "cost_basis", watchNA: true, render: (r) => usd(r.last_pos_cost) },
   { id: "invested", label: "Invested", align: "right", term: "invested", watchNA: true, render: (r) => usd(r.invested) },
@@ -331,7 +380,7 @@ export type ColumnPrefs = {
   move: (id: string, dir: -1 | 1) => void;
   reorder: (id: string, toIndex: number) => void;
   reset: () => void;
-  available: { id: string; label: string }[];
+  available: { id: string; label: string; group?: string }[];
 };
 
 export function useColumnPrefs(

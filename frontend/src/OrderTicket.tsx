@@ -4,6 +4,7 @@ import type { Suggestion } from "./types";
 
 import { API } from "./api";
 import { IconWarning } from "./Icon";
+import { LadderReadPanel, LadderStrip } from "./LadderReadPanel";
 import { comboError, offerableTypes } from "./orderEligibility";
 import { defaultTiming, describeTiming } from "./orderTiming";
 
@@ -35,6 +36,7 @@ export function OrderTicket({
   mode?: string; // "schwab" (real money) | "demo". Undefined → treated as LIVE (fail safe).
 }) {
   const [qty, setQty] = useState(suggestion.quantity);
+  const [readOpen, setReadOpen] = useState(false);   // the ladder read's full text (BUY tickets)
   const [orderType, setOrderType] = useState<string>(suggestion.order_type || "LIMIT");
   const [price, setPrice] = useState(suggestion.limit_price);
   const [stopPrice, setStopPrice] = useState(suggestion.limit_price);
@@ -278,6 +280,18 @@ export function OrderTicket({
             {suggestion.rung ? <span style={S.titleSub}> · position {suggestion.rung}</span> : null}
           </div>
           {suggestion.note && <p style={S.warnNote}><IconWarning /> {suggestion.note}</p>}
+          {suggestion.side === "BUY" && suggestion.ladder_read && (
+            <div style={{ margin: "8px 0 4px" }}>
+              <LadderStrip read={suggestion.ladder_read} open={readOpen} onOpen={() => setReadOpen((v) => !v)}
+                note={suggestion.rung && suggestion.rung > 2 ? "Measured for a rung-2 dip and target" : undefined} />
+              {/* Bounded so opening the read never pushes the order controls off screen. */}
+              {readOpen && (
+                <div style={{ maxHeight: 220, overflowY: "auto" }}>
+                  <LadderReadPanel read={suggestion.ladder_read} />
+                </div>
+              )}
+            </div>
+          )}
 
           {extended && (
             <p style={S.note}>

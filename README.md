@@ -28,6 +28,7 @@ Ships as a Windows desktop app (Electron shell + bundled backend) that
   order path):
   - **Bulk Buy** — the next ladder position on dips, or fresh entries you select.
   - **Bulk Sell** — harvest each holding's profitable last position.
+- **Ladder read** — per stock, from 5 years of prices and your own rules: how often past dips reached your sell target (and how deep they went), whether it's swinging or trending, how unusual the current dip is, whether the market explains it, and a leveraged fund's rebalancing decay. Reference only.
 - **Position detail** — the buy ladder, projected positions, price chart with ladder
   and 52-week overlays, per-symbol realized/unrealized/dividend split, notes, and
   one-click price alerts.

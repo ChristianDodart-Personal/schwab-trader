@@ -5,6 +5,7 @@ import { DETAIL_COLUMNS, DETAIL_COLUMN_LIST, DEFAULT_DETAIL_COLS, useColumnPrefs
 import { Term } from "./GlossaryUI";
 import { OrderTicket } from "./OrderTicket";
 import { PriceChart } from "./PriceChart";
+import { LadderReadPanel, LadderStrip } from "./LadderReadPanel";
 import { SkeletonPanel } from "./Skeleton";
 import { useToast } from "./Toast";
 import type { PositionDetailData, Suggestion, SymbolRuleOverride } from "./types";
@@ -19,9 +20,10 @@ export function PositionDetail({ symbol, mode, onClose, embedded }: { symbol: st
   // One collapsible tool at a time (Chart / Rules / Alerts / Notes) so the ladder sits
   // right under the stats instead of being pushed down. `showProj` reveals the projected
   // ladder (next 5 only) on demand.
-  const [panel, setPanel] = useState<null | "chart" | "rules" | "alerts" | "notes">(null);
+  type Tool = "ladder" | "chart" | "rules" | "alerts" | "notes";
+  const [panel, setPanel] = useState<null | Tool>(null);
   const [showProj, setShowProj] = useState(false);
-  const togglePanel = (p: "chart" | "rules" | "alerts" | "notes") => setPanel((cur) => (cur === p ? null : p));
+  const togglePanel = (p: Tool) => setPanel((cur) => (cur === p ? null : p));
   const cols = useColumnPrefs("detail.cols.v1", DEFAULT_DETAIL_COLS, DETAIL_COLUMN_LIST);
   const toast = useToast();
 
@@ -119,8 +121,12 @@ export function PositionDetail({ symbol, mode, onClose, embedded }: { symbol: st
         </p>
       )}
 
+      {/* Ladder read at a glance: the context for a rung decision, one click from the detail. */}
+      <LadderStrip read={d.ladder_read} status={d.ladder_status} open={panel === "ladder"} onOpen={() => togglePanel("ladder")} />
+
       {/* Compact tool pills — one panel opens at a time so the ladder stays high up. */}
       <div style={S.pills}>
+        <Pill on={panel === "ladder"} onClick={() => togglePanel("ladder")}>Ladder read</Pill>
         <Pill on={panel === "chart"} onClick={() => togglePanel("chart")}>Chart</Pill>
         {!d.is_watch && (
           <Pill on={panel === "rules"} onClick={() => togglePanel("rules")} warn={!!d.rules_override}>
@@ -131,6 +137,7 @@ export function PositionDetail({ symbol, mode, onClose, embedded }: { symbol: st
         <Pill on={panel === "notes"} onClick={() => togglePanel("notes")}>Notes</Pill>
       </div>
 
+      {panel === "ladder" && <LadderReadPanel read={d.ladder_read} status={d.ladder_status} />}
       {panel === "chart" && (
         <div style={{ marginTop: 8 }}>
           <PriceChart symbol={d.symbol} rungs={d.projected_ladder.map((p) => p.trigger_price)}

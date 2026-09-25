@@ -32,6 +32,30 @@ def is_leveraged_etf(name: str | None, industry: str | None) -> bool:
     return False
 
 
+_LEV_RE = re.compile(r"(-?\d+(?:\.\d+)?)\s*X\b")
+_SHORT_TOKENS = ("SHORT", "INVERSE", "BEAR")
+
+
+def leverage_factor(name: str | None, industry: str | None) -> float | None:
+    """The fund's daily leverage from its name: "2X Long" → 2, "-1X" / "2X Short" → −1 / −2,
+    "UltraPro" → 3, "Ultra" → 2 (ProShares), "Inverse" with no number → −1. None when it
+    isn't a leveraged ETF or the name gives no multiple."""
+    if not is_leveraged_etf(name, industry):
+        return None
+    up = (name or "").upper()
+    short = any(t in up for t in _SHORT_TOKENS)
+    m = _LEV_RE.search(up)
+    if m:
+        lev = float(m.group(1))
+    elif "ULTRAPRO" in up:          # ProShares naming: UltraPro = 3x, Ultra = 2x
+        lev = 3.0
+    elif "ULTRA" in up:
+        lev = 2.0
+    else:
+        return -1.0 if short else None
+    return -abs(lev) if short else lev
+
+
 def detect_underlying(name: str | None, industry: str | None,
                       known: set[str], self_sym: str) -> str | None:
     """The underlying ticker for a leveraged ETF, inferred from its name — but only

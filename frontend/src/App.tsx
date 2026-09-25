@@ -534,6 +534,7 @@ export function App() {
             placing={bulk.placing}
             result={bulk.result}
             buyingPower={bulk.buyingPower}
+            ladder={Object.fromEntries((data?.rows ?? []).map((r) => [r.symbol, r.ladder]))}
             onConfirm={bulk.confirm}
             onClose={bulk.closeReview}
           />

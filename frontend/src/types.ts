@@ -21,6 +21,16 @@ export type DashboardRow = {
   trend?: { "1M": number | null; "3M": number | null; "6M": number | null; "12M": number | null } | null;
   trend_score?: number | null;
   trend_n?: number | null;
+  // Ladder read (reference only): the nested read plus flat copies for sorting.
+  ladder?: LadderRead | null;
+  bounce_rate?: number | null;
+  ladder_status?: "ready" | "loading" | "unavailable" | "short";
+  // Oriented so the table's first (descending) sort click puts the ladder-relevant rows
+  // first: choppiest, deepest dip.
+  chop_score?: number | null;
+  dip_depth?: number | null;
+  why_market_share?: number | null;
+  decay_month?: number | null;
   market_cap?: number | null;        // sharesOutstanding × price (Schwab)
   first_buy_shares?: number | null;  // shares matching a rung-1 dollar size — prefills a fresh buy
   portfolio_pct: number | null;
@@ -240,6 +250,7 @@ export type Suggestion = {
   // What limit_price IS. Default = the strategy's target/trigger. "Last" = just the last
   // traded price (the share-count LIFO sell), so the ticket must not call it a target.
   price_label?: string;
+  ladder_read?: LadderRead | null;  // BUY: reference context shown on the ticket
 };
 
 export type Alert = {
@@ -438,4 +449,46 @@ export type PositionDetailData = {
   rules_override?: SymbolRuleOverride | null; // per-ticker rules (null = global)
   lots: Lot[];
   projected_ladder: ProjectedRung[];
+  ladder_read?: LadderRead | null;  // with `events` (recent dips)
+  ladder_status?: "ready" | "loading" | "unavailable" | "short";
+};
+
+// Price-history measures for a buy-the-dip ladder (backend app/ladder_stats.py). All
+// percentages are fractions (0.1 = 10%). Null until the 5-year history has loaded.
+export type LadderRead = {
+  asof: string;
+  bounce: {
+    dips: number; recovered: number; rate: number | null; median_days: number | null;
+    more_rungs: number; worst_low_pct: number | null; open: number;
+    deep: number;                  // dips that reached rung 8+ (the largest buys)
+    worst_rung: number | null;     // deepest rung any dip reached (the dip buy is rung 2)
+    worst_dollars: number | null;  // dollars across rungs 2..worst_rung
+    past_ten: number;              // dips that went past rung 10 (no depth cap: deepest size, last drop)
+    base_rate: number | null;      // how often ANY day reached the target in the window
+    dip_pct: number; target_pct: number; window_days: number; years: number;
+  };
+  chop: {
+    er: number | null; label: "choppy" | "mixed" | "trending_up" | "trending_down" | null;
+    rank: number | null; net_pct: number | null; net_rungs: number | null; days: number;
+  };
+  typical_move: number | null;   // σ of daily % changes (0.042 = ±4.2% a day)
+  dip: {
+    from: "last_buy" | "recent_high"; ref_price: number; ref_date: string | null;
+    pct: number; days: number;             // trading days since the reference
+    move: number | null;                   // σ of daily % changes BEFORE the drop (the yardstick)
+    span_move: number | null;              // a normal move over that many days (σ × √days)
+    norm: number | null;                   // pct ÷ span_move: −1 = a normal dip, −2 = a rare one
+    next_rung_price?: number; next_rung_pct?: number;     // next rung, and its % from the price
+    next_rung_moves?: number;                             // …in typical daily moves
+  };
+  why_down: {
+    stock_pct: number; market_pct: number; beta: number; expected_pct: number;
+    specific_pct: number; market_share: number; label: "market" | "stock" | "both"; since: string;
+  } | null;
+  leverage: number | null;
+  decay_month: number | null;
+  events?: {
+    date: string; entry: number; outcome: "recovered" | "expired" | "open"; days: number | null;
+    low_pct: number; extra_rungs: number; rung_reached: number; age: number | null;  // age: open dips only
+  }[];
 };
